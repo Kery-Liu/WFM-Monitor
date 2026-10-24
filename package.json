@@ -1,0 +1,86 @@
+{
+  "name": "wfm-monitor",
+  "version": "1.0.0",
+  "description": "Warframe Market 价格监控与通知桌面应用 / Price watcher & notifier for warframe.market",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "web": "node src/server.js",
+    "pack": "node scripts/pack.js",
+    "dist": "node scripts/build-installer.js",
+    "dist:dir": "node scripts/preflight-clean.js && electron-builder --win dir",
+    "verify:build": "node scripts/verify-build.js",
+    "audit": "node scripts/audit-catalog.js",
+    "test:realtime": "node scripts/test-realtime.js",
+    "test:cooldown": "node scripts/test-cooldown.js",
+    "test:disable": "node scripts/test-disable.js",
+    "test:errors": "node scripts/test-errors.js",
+    "test:notify": "node scripts/test-notify.js",
+    "test:i18n": "node scripts/e2e-i18n.js",
+    "test:control": "node scripts/test-control.js"
+  },
+  "author": "Kery",
+  "license": "MIT",
+  "dependencies": {
+    "imapflow": "^2.9.1",
+    "mailparser": "^3.12.4",
+    "nodemailer": "^6.9.16",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
+    "rcedit": "^5.0.2"
+  },
+  "build": {
+    "appId": "com.kery.wfmmarket.monitor",
+    "productName": "WFM-Monitor",
+    "copyright": "Copyright © 2026 Kery",
+    "asar": false,
+    "compression": "maximum",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "assets/icon.png",
+      "assets/catalog.seed.json",
+      "package.json",
+      "!**/*.map",
+      "!**/node_modules/**/{test,__tests__,tests,example,examples}/**",
+      "!**/node_modules/**/*.{md,markdown,ts,d.ts}"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png",
+      "artifactName": "WFM-Monitor-Setup-${version}.${ext}",
+      "legalTrademarks": "Warframe is a trademark of Digital Extremes. This is an unofficial fan tool."
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "WFM 价格监控",
+      "uninstallDisplayName": "WFM 价格监控",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true,
+      "installerLanguages": [
+        "zh_CN",
+        "en_US"
+      ],
+      "language": "2052",
+      "artifactName": "WFM-Monitor-Setup-${version}.${ext}"
+    }
+  }
+}

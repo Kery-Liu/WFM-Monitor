@@ -1,0 +1,15 @@
+# 依赖与产物
+node_modules/
+dist/
+release/
+build/
+# 运行时数据（含密钥类配置，绝不入库）
+data/
+# 工作记忆（本机项目数据，不入库）
+.workbuddy/
+_tmp/
+_verify/
+*.log
+# 系统垃圾
+Thumbs.db
+.DS_Store

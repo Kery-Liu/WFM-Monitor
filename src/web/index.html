@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https://warframe.market data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'" />
+<title>WFM 价格监控</title>
+<script src="theme-boot.js"></script>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">WF</div>
+      <div class="brand-text">
+        <b>Market Monitor</b>
+        <span>warframe.market 价格监控</span>
+      </div>
+    </div>
+
+    <div class="side-actions">
+      <button id="btn-add" class="btn primary block">＋ 新建监控</button>
+      <div class="row gap8">
+        <button id="btn-check-all" class="btn ghost flex1">全部检查</button>
+        <button id="btn-pause" class="btn ghost flex1">全部暂停</button>
+      </div>
+    </div>
+
+    <div class="list-head">
+      <span>监控目标</span>
+      <span id="target-count" class="muted">0</span>
+    </div>
+    <div id="target-list" class="target-list"></div>
+
+    <div class="side-footer">
+      <div class="health-row"><i id="dot-http"></i><span>接口</span><b id="txt-http">--</b></div>
+      <div class="health-row"><i id="dot-ws"></i><span>实时流</span><b id="txt-ws">--</b></div>
+      <div class="health-row"><i id="dot-cat"></i><span>物品库</span><b id="txt-cat">--</b></div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <nav class="tabs" id="tabs">
+        <button data-tab="detail" class="tab active">监控详情</button>
+        <button data-tab="events" class="tab">事件记录 <em id="event-badge"></em></button>
+        <button data-tab="diag" class="tab">网络自检</button>
+        <button data-tab="settings" class="tab">设置</button>
+      </nav>
+      <div class="topbar-right">
+        <span id="pause-chip" class="chip warn hidden">已暂停</span>
+        <span id="clock" class="mono muted"></span>
+      </div>
+    </header>
+
+    <section id="pane-detail" class="pane active"></section>
+    <section id="pane-events" class="pane"></section>
+    <section id="pane-diag" class="pane"></section>
+    <section id="pane-settings" class="pane"></section>
+  </main>
+</div>
+
+<div id="modal-root"></div>
+<div id="dialog-root"></div>
+<div id="toast-root" class="toast-root"></div>
+
+<script src="i18n-dict.js"></script>
+<script src="i18n.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
