@@ -2175,6 +2175,7 @@ async function switchKind(next) {
   if (!box || !dyn) return;
 
   const fromH = box.getBoundingClientRect().height;
+  const hadForm = !!m.selected; // 切换前这一侧有没有表单（决定要不要动高度）
   const fixedSize = box.classList.contains('maxed') || box.classList.contains('collapsed');
 
   dyn.classList.add('is-out'); // 40ms 淡出
@@ -2209,6 +2210,8 @@ async function switchKind(next) {
   m.results = [];
 
   dyn.innerHTML = modalBodyHtml();
+  // 先把说明收进「!」：否则量高度时多算一行灰字，窗口会先长高再缩回（用户看到的「边框跳」）
+  decorateHints(dyn);
   bindModalBody();
 
   const save = $('#m-save');
@@ -2216,8 +2219,8 @@ async function switchKind(next) {
   const status = $('#m-status');
   if (status) status.textContent = m.selected ? `已选择：${pickName(m.selected.zh, m.selected.en)}` : '';
 
-  // 高度：只有两侧内容确实不同高时才过渡；同高就一动不动
-  if (!fixedSize) {
+  // 高度：默认（两侧都没选物品）一律不动；有表单时才量并过渡
+  if (!fixedSize && (hadForm || !!m.selected)) {
     const prevH = box.style.height;
     box.style.height = 'auto';
     const toH = box.offsetHeight;
