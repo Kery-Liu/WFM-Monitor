@@ -6,7 +6,7 @@ const path = require('path');
 const { readJsonSafe, writeJsonAtomic, clamp } = require('./util');
 
 const DEFAULTS = {
-  version: 1,
+  version: 2, // 配置结构版本：1 = v1.0.0，2 = v1.0.1（全局快捷键默认启用）
   global: {
     platform: 'pc', // pc | ps4 | xbox | switch | mobile
     crossplay: true,
@@ -44,13 +44,13 @@ const DEFAULTS = {
     maxPerHour: 30,
   },
   ui: {
-    theme: 'dark',
     compact: false,
     confirmOnDelete: true,
     whisperLang: 'auto', // auto | en | zh —— 复制喊话时使用的语言
     language: 'zh', // zh | en —— 整个界面与通知文案的语言
     theme: 'auto', // auto | dark | light —— auto 跟随系统，探测不到用 light
-    hotkey: { enabled: false, accelerator: 'CommandOrControl+Shift+F9' }, // 全局快捷键：触发全部检查
+    // 全局快捷键：默认启用，开箱即可用 Ctrl/Cmd+Shift+F9 触发「全部检查」
+    hotkey: { enabled: true, accelerator: 'CommandOrControl+Shift+F9' },
   },
   // 远程控制：目前只支持邮件（IMAP 轮询）
   control: {
@@ -86,8 +86,32 @@ function deepMerge(base, patch) {
 class Config {
   constructor(dataDir) {
     this.file = path.join(dataDir, 'settings.json');
-    this.data = deepMerge(DEFAULTS, readJsonSafe(this.file, {}) || {});
+    const saved = readJsonSafe(this.file, null);
+    // 用 defaults() 的深拷贝做底，避免运行时改动反向污染 DEFAULTS
+    this.data = deepMerge(Config.defaults(), saved || {});
+    this._migrate(!!saved);
     this._clamp();
+  }
+
+  /**
+   * 老配置迁移
+   * v1.0.0 的默认值是「快捷键关闭」，结果开箱时 Ctrl+Shift+F9 从没注册上；
+   * v1.0.1 改为默认启用，这里把 v1 配置一次性打开（用户之后仍可手动关闭）。
+   */
+  _migrate(persisted) {
+    if ((Number(this.data.version) || 1) >= 2) return;
+    if (!this.data.ui || typeof this.data.ui !== 'object') this.data.ui = Config.defaults().ui;
+    const def = DEFAULTS.ui.hotkey;
+    const hk = this.data.ui.hotkey && typeof this.data.ui.hotkey === 'object' ? { ...this.data.ui.hotkey } : { ...def };
+    if (!hk.accelerator) hk.accelerator = def.accelerator;
+    hk.enabled = true;
+    this.data.ui.hotkey = hk;
+    this.data.version = 2;
+    if (persisted) {
+      try {
+        this.save();
+      } catch (_) {}
+    }
   }
 
   _clamp() {

@@ -348,6 +348,12 @@ app.on('activate', () => {
   else if (win) win.show();
 });
 
+app.on('will-quit', () => {
+  try {
+    globalShortcut.unregisterAll();
+  } catch (_) {}
+});
+
 app.on('before-quit', async (e) => {
   quitting = true;
   if (core) {
