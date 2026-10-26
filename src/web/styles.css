@@ -80,7 +80,6 @@
   --chart-axis: #7c8b9d;
   --sidebar: linear-gradient(180deg, #0e151d, #0b1118);
   --topbar: rgba(13, 19, 26, .58);
-  --glass-brd: rgba(255, 255, 255, .13);
   --track-off: #2a3543;
   --track-thumb: #8fa0b3;
   --glass-panel: rgba(18, 26, 35, .84);
@@ -93,12 +92,16 @@
   --pill-green-brd: #27553a;
   --pill-warn-brd: #5a4320;
   --danger-brd: #4b2328;
-  --seg-track: #0b1017;
-  --seg-on: linear-gradient(180deg, #26323f, #1b2531);
-  /* 三档投影：卡片刻线 → 浮起面板 → 弹窗 */
-  --sh-1: 0 0 0 1px var(--edge, var(--line)), 0 1px 2px rgba(0, 0, 0, .30), inset 0 1px 0 var(--edge-hi);
-  --sh-2: 0 0 0 1px var(--edge, var(--line)), 0 10px 28px rgba(0, 0, 0, .32), inset 0 1px 0 var(--edge-hi);
-  --sh-3: 0 0 0 1px var(--edge, var(--line-strong)), 0 24px 64px rgba(0, 0, 0, .55), inset 0 1px 0 var(--edge-hi);
+  --seg-track: rgba(255, 255, 255, .045);
+  --seg-track-line: rgba(255, 255, 255, .05);
+  --seg-on: rgba(224, 179, 84, .13);
+  --seg-on-line: rgba(224, 179, 84, .30);
+  --seg-on-shadow: 0 1px 2px rgba(0, 0, 0, .22);
+  /* 三档投影：卡片刻线 → 浮起面板 → 弹窗；内侧高光单独作为 --card-hi 只给侧栏卡片 */
+  --sh-1: 0 0 0 1px var(--edge, var(--line)), 0 1px 2px rgba(0, 0, 0, .30);
+  --sh-2: 0 0 0 1px var(--edge, var(--line)), 0 10px 28px rgba(0, 0, 0, .32);
+  --sh-3: 0 0 0 1px var(--edge, var(--line-strong)), 0 24px 64px rgba(0, 0, 0, .55);
+  --card-hi: inset 0 1px 0 var(--edge-hi);
 }
 
 /* 亮白主题：白底 + 深字 + 同一套金色点缀，环线更淡、投影更轻 */
@@ -138,7 +141,6 @@
   --chart-axis: #8a95a3;
   --sidebar: linear-gradient(180deg, #ffffff, #f7fafc);
   --topbar: rgba(255, 255, 255, .66);
-  --glass-brd: rgba(255, 255, 255, .95);
   --track-off: #d3dce6;
   --track-thumb: #93a3b6;
   --glass-panel: rgba(255, 255, 255, .88);
@@ -151,11 +153,15 @@
   --pill-green-brd: #b6dfc4;
   --pill-warn-brd: #e0c294;
   --danger-brd: #e3b0b0;
-  --seg-track: #e7edf5;
-  --seg-on: linear-gradient(180deg, #ffffff, #fbfdff);
-  --sh-1: 0 0 0 1px var(--edge, var(--line)), 0 1px 2px rgba(16, 24, 40, .06), inset 0 1px 0 var(--edge-hi);
-  --sh-2: 0 0 0 1px var(--edge, var(--line)), 0 10px 26px rgba(16, 24, 40, .09), inset 0 1px 0 var(--edge-hi);
-  --sh-3: 0 0 0 1px var(--edge, var(--line-strong)), 0 24px 56px rgba(16, 24, 40, .16), inset 0 1px 0 var(--edge-hi);
+  --seg-track: rgba(15, 23, 42, .07);
+  --seg-track-line: rgba(15, 23, 42, .06);
+  --seg-on: rgba(255, 255, 255, .95);
+  --seg-on-line: rgba(143, 102, 22, .22);
+  --seg-on-shadow: 0 1px 2px rgba(16, 24, 40, .10);
+  --sh-1: 0 0 0 1px var(--edge, var(--line)), 0 1px 2px rgba(16, 24, 40, .06);
+  --sh-2: 0 0 0 1px var(--edge, var(--line)), 0 10px 26px rgba(16, 24, 40, .09);
+  --sh-3: 0 0 0 1px var(--edge, var(--line-strong)), 0 24px 56px rgba(16, 24, 40, .16);
+  --card-hi: inset 0 1px 0 var(--edge-hi);
 }
 
 * { box-sizing: border-box; }
@@ -238,7 +244,7 @@ body {
   padding: var(--s-4);
   margin-bottom: var(--s-4);
   cursor: pointer;
-  box-shadow: var(--sh-1);
+  box-shadow: var(--sh-1), var(--card-hi);
   transition:
     transform var(--dur-lift) var(--ease-spring),
     box-shadow var(--dur-lift) var(--ease),
@@ -252,7 +258,7 @@ body {
 }
 .card.trigger {
   --edge: rgba(224, 179, 84, .55);
-  box-shadow: var(--sh-1), inset 0 0 26px rgba(224, 179, 84, .07);
+  box-shadow: var(--sh-1), var(--card-hi), inset 0 0 26px rgba(224, 179, 84, .07);
 }
 .card.off { opacity: .5; }
 /* 悬停：缓起的上浮 + 左上角一层柔光，像玻璃被抬起来接光 */
@@ -261,7 +267,7 @@ body {
   background-color: var(--panel-2);
   background-image: radial-gradient(135% 120% at 14% -30%, rgba(255, 255, 255, .10), transparent 58%);
   transform: translateY(-3px);
-  box-shadow: var(--sh-2);
+  box-shadow: var(--sh-2), var(--card-hi);
 }
 .card.active:hover { --edge: var(--gold-dim); }
 .card.off:hover { --edge: var(--line-strong); }
@@ -343,7 +349,7 @@ button.pill:hover { border-color: var(--line-strong); color: var(--text); }
   padding: 0 var(--s-6); height: 54px; flex: none;
   background: var(--topbar);
   backdrop-filter: blur(26px) saturate(180%);
-  box-shadow: 0 1px 0 var(--line), inset 0 1px var(--glass-brd);
+  box-shadow: 0 1px 0 var(--line);
   position: relative; z-index: 2;
 }
 .tabs { display: flex; gap: 2px; }
@@ -488,7 +494,7 @@ select { cursor: pointer; }
 .seg {
   display: flex; gap: 2px; padding: 3px; flex-wrap: wrap;
   background: var(--seg-track); border-radius: var(--r-sm);
-  box-shadow: inset 0 0 0 1px var(--line-soft);
+  box-shadow: inset 0 0 0 1px var(--seg-track-line);
 }
 .seg button {
   flex: 1 1 auto; min-width: 78px; background: transparent; border: 0; color: var(--muted);
@@ -498,9 +504,9 @@ select { cursor: pointer; }
 .seg button:hover { color: var(--text); background: var(--hover); }
 .seg button.on {
   color: var(--gold); background: var(--seg-on); font-weight: 600;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, .28), inset 0 0 0 1px rgba(224, 179, 84, .28);
+  box-shadow: inset 0 0 0 1px var(--seg-on-line), var(--seg-on-shadow);
+  backdrop-filter: blur(4px) saturate(130%);
 }
-:root[data-theme="light"] .seg button.on { box-shadow: 0 1px 2px rgba(16, 24, 40, .12), inset 0 0 0 1px rgba(143, 102, 22, .30); }
 
 /* 开关只在「轨道 + 文字」这块区域可点：inline-flex 收缩到内容宽度，
    否则 label 作为块级 flex 会撑满整行，点行尾空白也会误触 */
@@ -707,7 +713,7 @@ select { cursor: pointer; }
   cursor: help; vertical-align: 1px;
   transition: color var(--dur-fast), border-color var(--dur-fast), background var(--dur-fast), transform var(--dur-fast) var(--ease);
 }
-.info:hover, .info.on {
+.info.on {
   color: var(--gold); border-color: var(--gold-dim); background: var(--gold-soft);
   transform: scale(1.08);
 }
@@ -752,23 +758,17 @@ select { cursor: pointer; }
   background: var(--panel-2); box-shadow: inset 0 0 0 1px var(--line);
 }
 
-/* ---------------- 磁吸按钮：鼠标靠近 120px 内被吸过去 ---------------- */
-.btn.magnetic {
-  transform: translate3d(var(--mx, 0px), var(--my, 0px), 0) scale(var(--press, 1));
+/* ---------------- 主按钮悬停轻微放大（原磁吸效果已取消） ---------------- */
+#btn-add {
   transition:
-    background var(--dur-fast), border-color var(--dur-fast),
-    color var(--dur-fast), filter var(--dur-fast), box-shadow var(--dur-fast);
-  will-change: transform;
+    transform var(--dur) var(--ease-spring),
+    background var(--dur-fast), border-color var(--dur-fast), filter var(--dur-fast);
 }
-.btn.magnetic:active { --press: .97; }
+#btn-add:hover { transform: scale(1.025); }
+#btn-add:active { transform: scale(.995); }
 
-/* ---------------- 玻璃边缘：1px 渐变亮线 + 位移折射 ---------------- */
-.card, .panel, .stat, .win, .topbar { position: relative; }
-.card::after,
-.panel::after,
-.stat::after,
-.win::after,
-.topbar::after {
+/* ---------------- 侧栏卡片的玻璃边缘（面板/弹窗不再加亮边） ---------------- */
+.card::after {
   content: ''; position: absolute; inset: 0; border-radius: inherit;
   pointer-events: none; padding: 1px; z-index: 3;
   background: linear-gradient(155deg, var(--rim-1) 0%, var(--rim-2) 34%, transparent 58%, var(--rim-3) 100%);
@@ -777,11 +777,7 @@ select { cursor: pointer; }
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   mask-composite: exclude;
 }
-/* 只有两块真正的玻璃表面走折射滤镜，避免整页都挂 SVG 滤镜 */
-.topbar::after, .win::after { filter: url(#liquidEdge); opacity: .95; }
-:root[data-theme="light"] .card::after,
-:root[data-theme="light"] .panel::after,
-:root[data-theme="light"] .stat::after { opacity: .8; }
+:root[data-theme="light"] .card::after { opacity: .8; }
 
 /* ---------------- 进场节奏（只在新内容挂载时播放，不跟随轮询重绘） ---------------- */
 @keyframes rise { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: none } }

@@ -527,75 +527,6 @@ function initHints() {
   window.addEventListener('resize', () => Tip.hideNow());
 }
 
-// ---------------- 磁吸按钮 ----------------
-/** 磁吸：按「鼠标到按钮矩形边缘」的距离判定，靠近边缘（60px 内）就开始轻微靠近，
- *  越贴边越强；偏移 = 中心方向 × 0.04 × 衰减，单轴最多 3px，lerp 0.12 追过去。
- *  只挂主按钮（新建监控）——多个按钮同时响应会让触发范围重叠，反而更乱。 */
-const MAG = { radius: 60, pull: 0.04, max: 3, lerp: 0.12 };
-let magItems = [];
-let magRaf = 0;
-const magMouse = { x: -9999, y: -9999 };
-
-function updateMagTargets() {
-  for (const it of magItems) {
-    const r = it.el.getBoundingClientRect();
-    // 减掉当前位移，还原出未吸附时的矩形，避免按钮追着自己跑
-    const left = r.left - it.x;
-    const top = r.top - it.y;
-    const cx = left + r.width / 2;
-    const cy = top + r.height / 2;
-    // 鼠标到矩形的最短距离：在按钮内为 0，只按「离边缘多远」触发
-    const nx = Math.max(left, Math.min(magMouse.x, left + r.width));
-    const ny = Math.max(top, Math.min(magMouse.y, top + r.height));
-    const edge = Math.hypot(magMouse.x - nx, magMouse.y - ny);
-    if (edge > MAG.radius) {
-      it.tx = 0;
-      it.ty = 0;
-      continue;
-    }
-    const falloff = 1 - edge / MAG.radius; // 贴边最强，60px 外归零
-    const dx = magMouse.x - cx;
-    const dy = magMouse.y - cy;
-    it.tx = Math.max(-MAG.max, Math.min(MAG.max, dx * MAG.pull * falloff));
-    it.ty = Math.max(-MAG.max, Math.min(MAG.max, dy * MAG.pull * falloff));
-  }
-}
-
-function magTick() {
-  magRaf = 0;
-  let moving = false;
-  for (const it of magItems) {
-    it.x += (it.tx - it.x) * MAG.lerp;
-    it.y += (it.ty - it.y) * MAG.lerp;
-    if (Math.abs(it.tx - it.x) < 0.15 && Math.abs(it.ty - it.y) < 0.15) {
-      it.x = it.tx;
-      it.y = it.ty;
-    } else {
-      moving = true;
-    }
-    it.el.style.setProperty('--mx', `${it.x.toFixed(2)}px`);
-    it.el.style.setProperty('--my', `${it.y.toFixed(2)}px`);
-  }
-  if (moving) magRaf = requestAnimationFrame(magTick);
-}
-
-function initMagnetic() {
-  magItems = $$('.btn.magnetic').map((el) => ({ el, x: 0, y: 0, tx: 0, ty: 0 }));
-  if (!magItems.length) return;
-  window.addEventListener('mousemove', (e) => {
-    magMouse.x = e.clientX;
-    magMouse.y = e.clientY;
-    updateMagTargets();
-    if (!magRaf) magRaf = requestAnimationFrame(magTick);
-  }, { passive: true });
-  window.addEventListener('mouseleave', () => {
-    magMouse.x = -9999;
-    magMouse.y = -9999;
-    updateMagTargets();
-    if (!magRaf) magRaf = requestAnimationFrame(magTick);
-  });
-}
-
 // ---------------- boot ----------------
 async function boot() {
   bindGlobal();
@@ -631,7 +562,6 @@ async function boot() {
 
 function bindGlobal() {
   initHints();
-  initMagnetic();
   $('#tabs').addEventListener('click', async (e) => {
     const btn = e.target.closest('.tab');
     if (!btn) return;
@@ -1334,17 +1264,14 @@ function renderSettings() {
               <option value="zh" ${cfg.ui?.whisperLang === 'zh' ? 'selected' : ''}>中文</option>
               <option value="en" ${cfg.ui?.whisperLang === 'en' ? 'selected' : ''}>English</option>
             </select>
-            <div class="hint">「复制喊话」生成 /w 文案时用的语言</div>
           </div>
           <div class="field">
             <label>文案预览（中）</label>
             <input type="text" value="/w 玩家 你好! 我想以100白金购买: &quot;物品 (等级 5)&quot;。" disabled/>
-            <div class="hint">中文版式示例</div>
           </div>
           <div class="field">
             <label>文案预览（英）</label>
             <input type="text" value="/w player Hi! I want to buy: &quot;Item (rank 5)&quot; for 100 platinum." disabled/>
-            <div class="hint">英文版式示例</div>
           </div>
         </div>
       </div>
@@ -1467,13 +1394,12 @@ function renderSettings() {
           </div>
         </div>
         <div class="form-row">
-          <div class="field"><label>账号（同时作为发件人）</label><input type="text" id="s-smtp-user" placeholder="you@qq.com" value="${esc(no.smtp.user || '')}"/>
-            <div class="hint">发件人固定使用该账号，无需另填</div>
+          <div class="field"><label>账号（发件人）</label><input type="text" id="s-smtp-user" placeholder="you@qq.com" value="${esc(no.smtp.user || '')}"/>
           </div>
           <div class="field"><label>密码 / 授权码</label><input type="password" id="s-smtp-pass" placeholder="${no.smtp.pass ? '已保存，留空则不修改' : 'SMTP 授权码'}" value=""/></div>
         </div>
         <div class="field">
-          <label>收件人（逗号分隔，留空=发给自己）</label>
+          <label>收件人</label>
           <input type="text" id="s-smtp-to" placeholder="${esc(no.smtp.user || '留空则发送到上面的账号邮箱')}" value="${esc(no.smtp.to || '')}"/>
           <div class="hint">不填就是自己发给自己；多个地址用逗号隔开</div>
         </div>
