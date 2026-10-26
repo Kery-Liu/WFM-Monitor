@@ -16,6 +16,7 @@ const S = {
   attrs: [],
   statsCache: new Map(),
   statsLoading: new Set(),
+  animKey: null, // 详情页错开入场的触发标记：只在切换监控对象时播放一次
   unread: 0,
   modal: null,
   lang: 'zh',
@@ -130,7 +131,7 @@ function sparkline(points, w, h, color) {
   const step = w / (vals.length - 1);
   const d = vals.map((v, i) => `${i === 0 ? 'M' : 'L'}${(i * step).toFixed(1)},${(h - ((v - min) / span) * (h - 4) - 2).toFixed(1)}`).join(' ');
   return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
-    <path d="${d}" fill="none" stroke="${color}" stroke-width="1.4" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+    <path d="${d}" fill="none" style="stroke:${color}" stroke-width="1.4" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
   </svg>`;
 }
 
@@ -141,12 +142,12 @@ const CHART_PAD = 6;
 function bigChart(series, targetPrice, w = CHART_W, h = CHART_H) {
   if (!series || series.length < 2) {
     S.chartCtx = null;
-    return '<div class="empty" style="height:100%"><p>暂无 48 小时成交数据（该物品可能长期无成交）</p></div>';
+    return '<div class="empty fill"><p>暂无 48 小时成交数据（该物品可能长期无成交）</p></div>';
   }
   const vals = series.map((s) => s.median).filter((v) => typeof v === 'number' && v > 0);
   if (vals.length < 2) {
     S.chartCtx = null;
-    return '<div class="empty" style="height:100%"><p>暂无有效的 48 小时成交数据</p></div>';
+    return '<div class="empty fill"><p>暂无有效的 48 小时成交数据</p></div>';
   }
   // Y 轴只按真实成交价缩放，目标价不参与缩放（否则目标 200p 会把 62-65p 的曲线压平）
   const dataMin = Math.min(...vals);
@@ -181,22 +182,28 @@ function bigChart(series, targetPrice, w = CHART_W, h = CHART_H) {
 
   S.chartCtx = { series, min, max, w, h, pad };
 
+  // 三条极淡的水平参考线：给曲线一个可读的高度参照，不抢主体颜色
+  const grid = [0.25, 0.5, 0.75]
+    .map((r) => `<line x1="${pad}" y1="${(pad + r * (h - pad * 2)).toFixed(1)}" x2="${w - pad}" y2="${(pad + r * (h - pad * 2)).toFixed(1)}" style="stroke:var(--line-soft)" stroke-width="1" stroke-dasharray="2 6" vector-effect="non-scaling-stroke"/>`)
+    .join('');
+
   return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
     <defs>
       <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="#35c7c0" stop-opacity="0.28"/>
-        <stop offset="100%" stop-color="#35c7c0" stop-opacity="0"/>
+        <stop offset="0%" style="stop-color:var(--teal);stop-opacity:.26"/>
+        <stop offset="100%" style="stop-color:var(--teal);stop-opacity:0"/>
       </linearGradient>
     </defs>
-    ${ty != null ? `<line x1="${pad}" y1="${ty.toFixed(1)}" x2="${w - pad}" y2="${ty.toFixed(1)}" stroke="#e0b354" stroke-width="1" stroke-dasharray="4 4" opacity="0.75"/>` : ''}
+    ${grid}
+    ${ty != null ? `<line x1="${pad}" y1="${ty.toFixed(1)}" x2="${w - pad}" y2="${ty.toFixed(1)}" style="stroke:var(--gold)" stroke-width="1" stroke-dasharray="4 4" opacity="0.75"/>` : ''}
     <path d="${area}" fill="url(#g1)"/>
-    <path d="${d}" fill="none" stroke="#35c7c0" stroke-width="1.8" vector-effect="non-scaling-stroke"/>
-    <line id="chart-cross" x1="0" y1="${pad}" x2="0" y2="${h - pad}" stroke="#7c8b9d" stroke-width="1" stroke-dasharray="3 3" opacity="0" vector-effect="non-scaling-stroke"/>
-    <circle id="chart-dot" cx="0" cy="0" r="3.5" fill="#fff" stroke="#35c7c0" stroke-width="2" opacity="0" vector-effect="non-scaling-stroke"/>
-    <circle cx="${x(series.length - 1).toFixed(1)}" cy="${y(last.median).toFixed(1)}" r="3" fill="#35c7c0"/>
+    <path d="${d}" fill="none" style="stroke:var(--teal)" stroke-width="1.8" vector-effect="non-scaling-stroke"/>
+    <line id="chart-cross" x1="0" y1="${pad}" x2="0" y2="${h - pad}" style="stroke:var(--line-strong)" stroke-width="1" stroke-dasharray="3 3" opacity="0" vector-effect="non-scaling-stroke"/>
+    <circle id="chart-dot" cx="0" cy="0" r="3.5" fill="#fff" style="stroke:var(--teal)" stroke-width="2" opacity="0" vector-effect="non-scaling-stroke"/>
+    <circle cx="${x(series.length - 1).toFixed(1)}" cy="${y(last.median).toFixed(1)}" r="3" style="fill:var(--teal)"/>
     <text x="${pad}" y="12" style="fill:var(--chart-axis)" font-size="10">高 ${Math.round(dataMax)}p</text>
     <text x="${pad}" y="${h - 6}" style="fill:var(--chart-axis)" font-size="10">低 ${Math.round(dataMin)}p</text>
-    ${ty != null ? `<text x="${w - pad}" y="${(ty > pad ? ty - 4 : ty + 12).toFixed(1)}" fill="#e0b354" font-size="10" text-anchor="end">${esc(targetLabel)}</text>` : ''}
+    ${ty != null ? `<text x="${w - pad}" y="${(ty > pad ? ty - 4 : ty + 12).toFixed(1)}" style="fill:var(--gold)" font-size="10" text-anchor="end">${esc(targetLabel)}</text>` : ''}
   </svg>
   <div class="chart-tip" id="chart-tip"></div>`;
 }
@@ -342,7 +349,7 @@ function askDialog({ title, message, buttons = [] }) {
   return new Promise((resolve) => {
     const root = $('#dialog-root');
     root.innerHTML = `
-      <div class="modal-mask dialog-mask" id="dlg-mask">
+      <div class="modal-mask" id="dlg-mask">
         <div class="dlg">
           <div class="dlg-title">${esc(title)}</div>
           <div class="dlg-msg">${esc(message)}</div>
@@ -609,7 +616,7 @@ function renderTargets() {
   const list = $('#target-list');
   $('#target-count').textContent = String(S.targets.length);
   if (!S.targets.length) {
-    list.innerHTML = `<div class="empty" style="height:auto;padding:40px 12px">
+    list.innerHTML = `<div class="empty side">
       <h3>还没有监控目标</h3>
       <p>点击上方「新建监控」，搜索任意物品（支持中文/英文/别名），设置目标价即可开始。</p>
     </div>`;
@@ -625,7 +632,7 @@ function renderTargets() {
       if (v.id === S.selectedId) cls.push('active');
       if (hit) cls.push('trigger');
       if (!t.enabled) cls.push('off');
-      const color = hit ? '#e0b354' : '#35c7c0';
+      const color = hit ? 'var(--gold)' : 'var(--teal)';
       const name = dn(t) || '未命名';
       const sub = t.kind === 'auction'
         ? `${isEN() ? 'Riven' : '紫卡'} · ${isEN() ? (t.nameZh || t.weaponSlug) : (t.nameEn || t.weaponSlug)}`
@@ -647,7 +654,7 @@ function renderTargets() {
           <span class="pill ${v.failures ? 'red' : ''}">${t.intervalSec}s</span>
           ${t.enabled ? `<span class="pill gray" data-countdown="${v.nextInMs || 0}">${dur(v.nextInMs || 0)}</span>` : '<span class="pill gray">不采集</span>'}
         </div>
-        ${sparkline(v.history, 300, 26, color)}
+        ${sparkline(v.history, 300, 28, color)}
       </div>`;
     })
     .join('');
@@ -716,7 +723,7 @@ function renderDetail() {
       <div class="panel-head">
         <span>48 小时成交中位价</span>
         <span class="row gap8">
-          <span class="muted" style="font-size:11px">${t.kind === 'auction' ? '拍卖不支持历史统计' : '来自官方 statistics 接口'}</span>
+          <span class="note">${t.kind === 'auction' ? '拍卖不支持历史统计' : '来自官方 statistics 接口'}</span>
           ${t.slug ? '<button class="btn sm ghost" id="btn-load-stats">加载走势</button>' : ''}
         </span>
       </div>
@@ -728,11 +735,20 @@ function renderDetail() {
     <div class="panel">
       <div class="panel-head">
         <span>当前符合筛选的挂单（前 10）</span>
-        <span class="muted" style="font-size:11px">最后更新 ${esc(ago(v.lastSuccessAt))}</span>
+        <span class="note">最后更新 ${esc(ago(v.lastSuccessAt))}</span>
       </div>
       <div class="panel-body flush">${ordersTable(snap, t)}</div>
     </div>
   `;
+
+  // 错开入场只在新选中的目标上播放一次：轮询重绘不重放，避免每秒闪一下
+  if (S.animKey !== v.id) {
+    S.animKey = v.id;
+    pane.classList.remove('stagger');
+    void pane.offsetWidth;
+    pane.classList.add('stagger');
+    setTimeout(() => pane.classList.remove('stagger'), 700);
+  }
 
   bindDetail(v);
   bindChartHover($('#chart-box', pane));
@@ -741,8 +757,8 @@ function renderDetail() {
 function chartPlaceholder(v) {
   const cached = v.target.slug ? S.statsCache.get(v.target.slug) : null;
   if (cached) return bigChart(cached, v.target.targetPrice);
-  if (!v.target.slug) return '<div class="empty" style="height:100%"><p>拍卖数据无历史统计</p></div>';
-  return `<div class="empty" style="height:100%"><p>点击右上角「加载走势」获取 48 小时成交价曲线</p></div>`;
+  if (!v.target.slug) return '<div class="empty fill"><p>拍卖数据无历史统计</p></div>';
+  return '<div class="empty fill"><p>点击右上角「加载走势」获取 48 小时成交价曲线</p></div>';
 }
 
 function attrName(slug) {
@@ -754,7 +770,7 @@ function attrName(slug) {
 function ordersTable(snap, t) {
   const rows = snap.top || [];
   if (!rows.length) {
-    return '<div class="empty" style="height:auto;padding:28px"><p>当前没有符合筛选条件的挂单</p></div>';
+    return '<div class="empty compact"><p>当前没有符合筛选条件的挂单</p></div>';
   }
   const statusText = { ingame: '游戏中', online: '在线', offline: '离线' };
   if (t.kind === 'auction') {
@@ -762,11 +778,11 @@ function ordersTable(snap, t) {
       <thead><tr><th>价格</th><th>词条</th><th>洗练</th><th>段位</th><th>卖家</th><th>上架</th><th></th></tr></thead>
       <tbody>${rows.map((o) => `<tr>
         <td class="price num">${p(o.platinum)}</td>
-        <td style="font-size:11px;color:var(--text-2)">${(o.attributes || []).map((a) => `${a.value > 0 ? '+' : ''}${a.value}% ${esc(attrName(a.url_name))}`).join('<br/>') || '--'}</td>
+        <td class="cell-sub">${(o.attributes || []).map((a) => `${a.value > 0 ? '+' : ''}${a.value}% ${esc(attrName(a.url_name))}`).join('<br/>') || '--'}</td>
         <td class="num">${o.reRolls ?? '--'}</td>
         <td class="num">${o.mastery ?? '--'}</td>
         <td><span class="status-dot ${esc(o.user.status)}"></span>${esc(o.user.name)}</td>
-        <td class="muted" style="font-size:11px">${esc(ago(Date.parse(o.created)))}</td>
+        <td class="note">${esc(ago(Date.parse(o.created)))}</td>
         <td><button class="btn sm ghost copy-row" data-oid="${esc(o.id)}" title="复制私聊文案">复制</button></td>
       </tr>`).join('')}</tbody>
     </table>`;
@@ -779,7 +795,7 @@ function ordersTable(snap, t) {
       <td>${esc(o.user.name)}</td>
       <td><span class="status-dot ${esc(o.user.status)}"></span>${esc(statusText[o.user.status] || o.user.status)}</td>
       <td class="num muted">${o.user.reputation ?? '--'}</td>
-      <td class="muted" style="font-size:11px">${esc(ago(Date.parse(o.updatedAt)))}</td>
+      <td class="note">${esc(ago(Date.parse(o.updatedAt)))}</td>
       <td><button class="btn sm ghost copy-row" data-oid="${esc(o.id)}" title="复制私聊文案">复制</button></td>
     </tr>`).join('')}</tbody>
   </table>`;
@@ -882,7 +898,7 @@ function renderEvents() {
       <div class="panel-head">
         <span>达标通知记录</span>
         <span class="row gap8">
-          <span class="muted" style="font-size:11px">共 ${list.length} 条</span>
+          <span class="note">共 ${list.length} 条</span>
           <button class="btn sm ghost" id="btn-clear-events">清空</button>
         </span>
       </div>
@@ -899,7 +915,7 @@ function renderEvents() {
                 </div>
               </div>
             </div>`).join('')
-          : '<div class="empty" style="height:auto;padding:50px"><h3>暂无事件</h3><p>当某个监控目标达到你设定的价位时，记录会出现在这里。</p></div>'}
+          : '<div class="empty compact"><h3>暂无事件</h3><p>当某个监控目标达到你设定的价位时，记录会出现在这里。</p></div>'}
       </div>
     </div>`;
   const clear = $('#btn-clear-events');
@@ -935,7 +951,7 @@ async function renderDiagPane() {
           </span>
         </div>
         <div class="panel-body" id="diag-body">
-          <p class="muted" style="margin:0">逐层探测：代理 → DNS → API → 订单接口 → 拍卖接口 → 实时推送 → 限速熔断。<br/>
+          <p class="muted m0">逐层探测：代理 → DNS → API → 订单接口 → 拍卖接口 → 实时推送 → 限速熔断。<br/>
           每一项都会说明「是否通畅」以及「不通时该怎么处理」。<br/>
           本程序只调用官方 API，不抓取网页，正常不会触发 Cloudflare 人机验证；若出现 403/验证页，多半是出口 IP 被标记，按提示处理即可。</p>
         </div>
@@ -968,8 +984,8 @@ function renderMetrics() {
     [en ? 'Rate limit' : '限速', `${S.settings?.global?.minRequestIntervalMs || '--'}ms · ${en ? 'concurrency' : '并发'} ${S.settings?.global?.maxConcurrent || '--'}`],
   ];
   box.innerHTML = rows
-    .map(([k, v]) => `<div class="row" style="justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line-soft)">
-      <span class="muted" style="font-size:11.5px">${esc(k)}</span><b style="font-size:12px;font-weight:500">${esc(v)}</b></div>`)
+    .map(([k, v]) => `<div class="metric-row">
+      <span class="metric-key">${esc(k)}</span><b class="metric-val">${esc(v)}</b></div>`)
     .join('');
 }
 
@@ -977,13 +993,13 @@ async function runDiag() {
   const body = $('#diag-body');
   const btn = $('#btn-run-diag');
   btn.disabled = true;
-  body.innerHTML = '<p class="muted" style="margin:0">正在逐层探测…（约 5-20 秒，取决于网络）</p>';
+  body.innerHTML = '<p class="muted m0">正在逐层探测…（约 5-20 秒，取决于网络）</p>';
   try {
     const r = await api.diagnose();
     body.innerHTML = `
       <div class="row" style="justify-content:space-between;margin-bottom:6px">
         <b style="color:${r.ok ? 'var(--green)' : 'var(--amber)'}">${esc(r.summary)}</b>
-        <span class="muted" style="font-size:11px">${esc(dateTimeStr(r.ts))}</span>
+        <span class="note">${esc(dateTimeStr(r.ts))}</span>
       </div>
       ${r.results.map((x) => `<div class="diag-item">
         <div class="diag-icon" style="color:${x.ok ? 'var(--green)' : 'var(--red)'}">${x.ok ? '●' : '✕'}</div>
@@ -993,7 +1009,7 @@ async function runDiag() {
           ${x.advice ? `<p class="advice">${esc(x.advice)}</p>` : ''}
         </div>
       </div>`).join('')}
-      ${!r.ok ? `<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+      ${!r.ok ? `<div class="diag-actions">
         <button class="btn sm" id="btn-open-site2">打开网页手动过验证</button>
         <button class="btn sm ghost" id="btn-copy-diag">复制诊断结果</button>
       </div>` : ''}`;
@@ -1040,7 +1056,7 @@ function renderSettings() {
   </div>
 
     <div class="panel">
-      <div class="panel-head"><span>采集参数</span><span class="muted" style="font-size:11px">官方限速 3 请求/秒，低于它才安全</span></div>
+      <div class="panel-head"><span>采集参数</span><span class="note">官方限速 3 请求/秒，低于它才安全</span></div>
       <div class="panel-body">
         <div class="form-row-3">
           <div class="field">
@@ -1080,10 +1096,10 @@ function renderSettings() {
           </div>
           <div class="field">
             <label>实时推送</label>
-            <label class="switch" style="margin-top:6px">
+            <label class="switch" style="margin-top:var(--s-2)">
               <input type="checkbox" id="s-stream" ${n.streamEnabled ? 'checked' : ''}/>
               <span class="track"></span>
-              <span style="font-size:12px">启用 WebSocket 实时补位</span>
+              <span class="switch-label">启用 WebSocket 实时补位</span>
             </label>
             <div class="hint">断线不影响轮询，只是少了秒级提醒</div>
           </div>
@@ -1113,7 +1129,7 @@ function renderSettings() {
     </div>
 
     <div class="panel">
-      <div class="panel-head"><span>外观</span><span class="muted" style="font-size:11px">切换后立即生效</span></div>
+      <div class="panel-head"><span>外观</span><span class="note">切换后立即生效</span></div>
       <div class="panel-body">
         <div class="form-row">
           <div class="field">
@@ -1147,10 +1163,10 @@ function renderSettings() {
           </div>
           <div class="field">
             <label>快捷键开关</label>
-            <label class="switch" style="margin-top:6px">
+            <label class="switch" style="margin-top:var(--s-2)">
               <input type="checkbox" id="s-hotkey-on" ${cfg.ui?.hotkey?.enabled ? 'checked' : ''}/>
               <span class="track"></span>
-              <span style="font-size:12px">启用全局快捷键</span>
+              <span class="switch-label">启用全局快捷键</span>
             </label>
             <div class="hint" id="s-hotkey-hint">${esc(S.hotkeyHint || '保存后生效，若与其他软件冲突会提示')}</div>
           </div>
@@ -1159,7 +1175,7 @@ function renderSettings() {
     </div>
 
     <div class="panel">
-      <div class="panel-head"><span>通知</span><span class="muted" style="font-size:11px">至少启用一个通道；灰字为默认值，留空即采用</span></div>
+      <div class="panel-head"><span>通知</span><span class="note">至少启用一个通道；灰字为默认值，留空即采用</span></div>
       <div class="panel-body">
         <div class="form-row-3">
           <div class="field">
@@ -1180,10 +1196,10 @@ function renderSettings() {
         </div>
 
         <div class="field">
-          <label class="switch"><input type="checkbox" id="s-desktop" ${no.desktop.enabled ? 'checked' : ''}/><span class="track"></span><span style="font-size:12px">Windows 桌面通知</span></label>
+          <label class="switch"><input type="checkbox" id="s-desktop" ${no.desktop.enabled ? 'checked' : ''}/><span class="track"></span><span class="switch-label">Windows 桌面通知</span></label>
         </div>
         <div class="field">
-          <label class="switch"><input type="checkbox" id="s-sound" ${no.sound.enabled ? 'checked' : ''}/><span class="track"></span><span style="font-size:12px">提示音</span></label>
+          <label class="switch"><input type="checkbox" id="s-sound" ${no.sound.enabled ? 'checked' : ''}/><span class="track"></span><span class="switch-label">提示音</span></label>
         </div>
 
         <div class="section-title">Webhook（企业微信 / 钉钉 / 自定义）</div>
@@ -1196,7 +1212,7 @@ function renderSettings() {
               <option value="custom" ${no.webhook.kind === 'custom' ? 'selected' : ''}>自定义 JSON</option>
             </select>
           </div>
-          <div class="field" style="grid-column: span 2">
+          <div class="field span-2">
             <label>地址</label>
             <input type="text" id="s-wh-url" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..." value="${esc(no.webhook.url || '')}"/>
           </div>
@@ -1213,7 +1229,7 @@ function renderSettings() {
             <div class="hint">关键词会出现在标题和正文首行</div>
           </div>
         </div>
-        <label class="switch" style="margin-bottom:12px"><input type="checkbox" id="s-wh-on" ${no.webhook.enabled ? 'checked' : ''}/><span class="track"></span><span style="font-size:12px">启用 Webhook</span></label>
+        <label class="switch" style="margin-bottom:var(--s-4)"><input type="checkbox" id="s-wh-on" ${no.webhook.enabled ? 'checked' : ''}/><span class="track"></span><span class="switch-label">启用 Webhook</span></label>
 
         <div class="section-title">邮件（SMTP）</div>
         <div class="form-row-3">
@@ -1237,32 +1253,30 @@ function renderSettings() {
           <input type="text" id="s-smtp-to" placeholder="${esc(no.smtp.user || '留空则发送到上面的账号邮箱')}" value="${esc(no.smtp.to || '')}"/>
           <div class="hint">不填就是自己发给自己；多个地址用逗号隔开</div>
         </div>
-        <div class="field" style="margin-bottom:12px;padding:10px 12px;background:var(--bg-2);border:1px solid var(--line);border-radius:8px">
-          <div style="font-size:11.5px;color:var(--muted);margin-bottom:6px">邮件版式预览</div>
-          <div style="font-size:12px;color:var(--text-2);line-height:1.8">
-            主题：<b style="color:var(--gold)">【warframe.market 达标】Ash Prime 一套 · 59p</b>
-          </div>
-          <div style="font-size:12px;color:var(--text-2);line-height:1.8">正文：物品名 + 大字当前价，下面一张表（目标价 / 当前价 / 差价 / 卖家 / 数量 / 达标挂单数 / 时间），</div>
-          <div style="font-size:12px;color:var(--text-2);line-height:1.8">底部一个「打开 warframe.market 查看」按钮和完整文本快照。</div>
+        <div class="preview-box">
+          <div class="preview-title">邮件版式预览</div>
+          <div class="preview-line">主题：<b>【warframe.market 达标】Ash Prime 一套 · 59p</b></div>
+          <div class="preview-line">正文：物品名 + 大字当前价，下面一张表（目标价 / 当前价 / 差价 / 卖家 / 数量 / 达标挂单数 / 时间），</div>
+          <div class="preview-line">底部一个「打开 warframe.market 查看」按钮和完整文本快照。</div>
         </div>
-        <label class="switch" style="margin-bottom:12px"><input type="checkbox" id="s-smtp-on" ${no.smtp.enabled ? 'checked' : ''}/><span class="track"></span><span style="font-size:12px">启用邮件通知</span></label>
+        <label class="switch" style="margin-bottom:var(--s-4)"><input type="checkbox" id="s-smtp-on" ${no.smtp.enabled ? 'checked' : ''}/><span class="track"></span><span class="switch-label">启用邮件通知</span></label>
 
         <div class="section-title">安静时段</div>
         <div class="form-row-3">
           <div class="field">
-            <label class="switch"><input type="checkbox" id="s-quiet-on" ${no.quietHours.enabled ? 'checked' : ''}/><span class="track"></span><span style="font-size:12px">启用</span></label>
+            <label class="switch"><input type="checkbox" id="s-quiet-on" ${no.quietHours.enabled ? 'checked' : ''}/><span class="track"></span><span class="switch-label">启用</span></label>
           </div>
           <div class="field"><label>开始</label><input type="text" id="s-quiet-start" ${phText(dq.start)} value="${esc(no.quietHours.start)}"/></div>
           <div class="field"><label>结束</label><input type="text" id="s-quiet-end" ${phText(dq.end)} value="${esc(no.quietHours.end)}"/></div>
         </div>
-        <div class="hint" style="margin-bottom:10px">安静时段内桌面弹窗与提示音会被抑制，但事件仍会记录、Webhook 与邮件照发。</div>
+        <div class="hint" style="margin-bottom:var(--s-4)">安静时段内桌面弹窗与提示音会被抑制，但事件仍会记录、Webhook 与邮件照发。</div>
       </div>
     </div>
 
     <div class="panel">
-      <div class="panel-head"><span>远程控制（邮件）</span><span class="muted" style="font-size:11px">用邮件给监控下指令</span></div>
+      <div class="panel-head"><span>远程控制（邮件）</span><span class="note">用邮件给监控下指令</span></div>
       <div class="panel-body">
-        <div class="hint" style="margin-bottom:10px">
+        <div class="hint" style="margin-bottom:var(--s-4)">
           <div>给邮箱发一封邮件，正文写「检查」或「check」，程序会跑一轮并把所有目标的价格汇总回给你（无达标也会回）。</div>
           <div>指令：检查 / 状态 / 帮助。</div>
         </div>
@@ -1301,14 +1315,14 @@ function renderSettings() {
             <div class="hint">填了之后，邮件主题或正文必须包含这串字符</div>
           </div>
         </div>
-        <label class="switch" style="margin-bottom:10px">
+        <label class="switch" style="margin-bottom:var(--s-4)">
           <input type="checkbox" id="s-ctl-on" ${ct.enabled ? 'checked' : ''}/>
           <span class="track"></span>
-          <span style="font-size:12px">启用邮件远程控制</span>
+          <span class="switch-label">启用邮件远程控制</span>
         </label>
         <div class="row gap8" style="flex-wrap:wrap;margin-bottom:10px">
           <button class="btn sm ghost" id="s-ctl-poll-now" type="button">立即收取一次</button>
-          <span class="muted" style="font-size:11.5px" id="s-ctl-status">—</span>
+          <span class="note" id="s-ctl-status">—</span>
         </div>
         <div class="hint">回复邮件用的是「通知 → 邮件（SMTP）」里配置的账号；没配 SMTP 就只能执行不会回复。</div>
       </div>
@@ -1324,8 +1338,8 @@ function renderSettings() {
           <button class="btn ghost" id="s-open-site">打开 warframe.market</button>
           <button class="btn danger" id="s-reset">恢复默认设置</button>
         </div>
-        <div class="hint" style="margin-top:10px" id="s-version"></div>
-        <div class="hint" style="margin-top:6px">「恢复默认设置」会把上面所有项（包括 Webhook 地址与邮箱账号密码）重置为初始值，请谨慎使用。</div>
+        <div class="hint" style="margin-top:var(--s-4)" id="s-version"></div>
+        <div class="hint" style="margin-top:var(--s-2)">「恢复默认设置」会把上面所有项（包括 Webhook 地址与邮箱账号密码）重置为初始值，请谨慎使用。</div>
       </div>
     </div>`;
 
@@ -1890,7 +1904,7 @@ function drawModal() {
     return;
   }
   const isAuction = m.kind === 'auction';
-  const formHtml = m.selected ? renderRuleForm() : `<p class="muted" style="font-size:12px;margin:0">请先在上方选择${isAuction ? '武器' : '物品'}。</p>`;
+  const formHtml = m.selected ? renderRuleForm() : `<p class="note m0">请先在上方选择${isAuction ? '武器' : '物品'}。</p>`;
   const title = m.existing ? `编辑监控 · ${m.existing.label || ''}` : '新建监控';
   root.innerHTML = `
   <div class="modal-mask win-mask" id="m-mask">
@@ -1909,16 +1923,16 @@ function drawModal() {
           <button data-kind="auction" class="${isAuction ? 'on' : ''}">紫卡拍卖</button>
         </div>
 
-        <div class="field" style="margin-top:14px">
+        <div class="field" style="margin-top:var(--s-4)">
           <label>${isAuction ? '搜索武器' : '搜索物品'}${m.selected ? '（重新搜索可更换）' : ''}</label>
           <input type="text" id="m-search" placeholder="${isAuction ? '例如：杀星 / kulstar / 女魔' : '例如：ash prime 一套 / 杀星 / forma'}" value="${esc(m.query)}"/>
           <div class="hint">支持中文、英文、别名：p=prime，套/set，图/bp。输入后从下方候选里点选，避免选错。</div>
         </div>
         <div class="result-list" id="m-results">${renderResults()}</div>
-        <div id="m-form-wrap" style="margin-top:16px">${formHtml}</div>
+        <div id="m-form-wrap" style="margin-top:var(--s-5)">${formHtml}</div>
       </div>
       <div class="modal-foot">
-        <span class="muted" id="m-status" style="margin-right:auto;font-size:11.5px"></span>
+        <span class="note" id="m-status" style="margin-right:auto"></span>
         <button class="btn" id="m-cancel">取消</button>
         <button class="btn primary" id="m-save" ${m.selected ? '' : 'disabled'}>${m.existing ? '保存修改' : '创建监控'}</button>
       </div>
@@ -2058,7 +2072,7 @@ function renderResults() {
     </div>`;
   }
   if (!m.results.length) {
-    return '<div style="padding:14px;color:var(--muted);font-size:11.5px">输入关键词开始搜索</div>';
+    return '<div class="result-empty">输入关键词开始搜索</div>';
   }
   return m.results
     .map((c, i) => {
@@ -2133,7 +2147,7 @@ function renderRuleForm() {
   if (!isAuction) {
     return `
       ${renderPartsBlock()}
-      <div class="panel" style="margin:0"><div class="panel-body">
+      <div class="panel m0"><div class="panel-body">
         <div class="field">
           <label>我要…</label>
           <div class="seg" id="f-dir">
@@ -2147,8 +2161,8 @@ function renderRuleForm() {
           <input type="number" id="f-minqty" min="1" max="99" value="${f.minQuantity || 1}"/>
           <div class="hint">过滤掉只卖 1 个的零散单，适合按套收</div>
         </div>
-        <div class="field" style="margin-bottom:0">
-          <label class="switch"><input type="checkbox" id="f-enabled" ${f.enabled !== false ? 'checked' : ''}/><span class="track"></span><span style="font-size:12px">创建后立即启用</span></label>
+        <div class="field mb0">
+          <label class="switch"><input type="checkbox" id="f-enabled" ${f.enabled !== false ? 'checked' : ''}/><span class="track"></span><span class="switch-label">创建后立即启用</span></label>
         </div>
       </div></div>`;
   }
@@ -2169,11 +2183,11 @@ function renderRuleForm() {
   });
   const chip = (a, group) => {
     const on = (f[group] || []).includes(a.slug);
-    return `<button type="button" class="pill ${on ? 'gold' : ''}" data-group="${group}" data-slug="${esc(a.slug)}" style="cursor:pointer">${esc(pickName(a.zh, a.en))}</button>`;
+    return `<button type="button" class="pill ${on ? 'gold' : ''}" data-group="${group}" data-slug="${esc(a.slug)}" >${esc(pickName(a.zh, a.en))}</button>`;
   };
 
   return `
-    <div class="panel" style="margin:0"><div class="panel-body">
+    <div class="panel m0"><div class="panel-body">
       <div class="form-row">
         <div class="field">
           <label>武器</label>
@@ -2214,8 +2228,8 @@ function renderRuleForm() {
       </div>
 
       ${common}
-      <div class="field" style="margin-bottom:0">
-        <label class="switch"><input type="checkbox" id="f-enabled" ${f.enabled !== false ? 'checked' : ''}/><span class="track"></span><span style="font-size:12px">创建后立即启用</span></label>
+      <div class="field mb0">
+        <label class="switch"><input type="checkbox" id="f-enabled" ${f.enabled !== false ? 'checked' : ''}/><span class="track"></span><span class="switch-label">创建后立即启用</span></label>
       </div>
     </div></div>`;
 }
