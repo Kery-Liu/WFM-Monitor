@@ -162,7 +162,7 @@ Dependency direction is fixed: `http → sources → domain → engine → notif
 4. No SQLite or other native modules; they break Electron packaging via ABI mismatch.
 5. "Disabled", "globally paused" and "manual check" are independent states — run the matching regression scripts after touching them.
 6. After changing UI copy, run `npm run test:i18n`; it launches the real app and fails on leftover Chinese in the English UI.
-7. After changing `src/web/styles.css` or renderer markup, run `npm run test:ui` — 43 assertions cover the type scale, control behaviour, tooltips/magnetic pull, themes and overflow.
+7. After changing `src/web/styles.css` or renderer markup, run `npm run test:ui` — 52 assertions cover the type scale, control behaviour, tooltips, tab transitions, themes and overflow.
 
 ### Commands
 
