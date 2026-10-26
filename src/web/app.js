@@ -1812,25 +1812,40 @@ function openAddModal(existing) {
     }).catch(() => {});
   }
   const t = existing ? existing.target : null;
+  const initKind = t ? t.kind : 'market';
+  const initSelected = t
+    ? {
+        slug: t.slug || t.weaponSlug,
+        id: t.itemId,
+        en: t.nameEn,
+        zh: t.nameZh,
+        weaponSlug: t.weaponSlug,
+        isExisting: true,
+      }
+    : null;
+  const initForm = t ? { ...t } : defaultForm(initKind);
+  // 两侧各存一份草稿：切换时只换当前指针，关闭窗口才丢弃
+  const draft = (kind, selected, form, query) => ({
+    query: query || '',
+    selected: selected || null,
+    form: form || defaultForm(kind),
+    parts: [],
+    partsFor: '',
+  });
   S.modal = {
     existing: existing || null,
-    kind: t ? t.kind : 'market',
+    kind: initKind,
     // 编辑时把原物品名回填到搜索框，并直接锁定为「已选」，不需要重新搜一次
     query: t ? dn(t) : '',
     results: [],
-    selected: t
-      ? {
-          slug: t.slug || t.weaponSlug,
-          id: t.itemId,
-          en: t.nameEn,
-          zh: t.nameZh,
-          weaponSlug: t.weaponSlug,
-          isExisting: true,
-        }
-      : null,
-    form: t ? { ...t } : defaultForm('market'),
+    selected: initSelected,
+    form: initForm,
     parts: [],
     partsFor: '',
+    drafts: {
+      market: initKind === 'market' ? draft('market', initSelected, initForm, t ? dn(t) : '') : draft('market'),
+      auction: initKind === 'auction' ? draft('auction', initSelected, initForm, t ? dn(t) : '') : draft('auction'),
+    },
     touched: false,
     maxed: false,
     minimized: false,
@@ -2165,40 +2180,67 @@ async function switchKind(next) {
   dyn.classList.add('is-out'); // 40ms 淡出
   await new Promise((r) => setTimeout(r, 40));
 
+  // 先把当前这一侧填的内容存进草稿（输入框 → m.form）
+  if (m.selected) syncForm();
+  if (m.drafts) {
+    m.drafts[m.kind] = {
+      query: m.query,
+      selected: m.selected,
+      form: m.form,
+      parts: m.parts,
+      partsFor: m.partsFor,
+    };
+  }
+
+  // 再取出目标侧的草稿；没有就回到默认
+  const d = (m.drafts && m.drafts[next]) || {
+    query: '',
+    selected: null,
+    form: defaultForm(next),
+    parts: [],
+    partsFor: '',
+  };
   m.kind = next;
-  m.selected = null;
+  m.query = d.query;
+  m.selected = d.selected;
+  m.form = d.form;
+  m.parts = d.parts;
+  m.partsFor = d.partsFor;
   m.results = [];
-  m.query = '';
-  m.parts = [];
-  m.partsFor = '';
-  m.form = defaultForm(next);
-  const save = $('#m-save');
-  if (save) save.disabled = true;
-  const status = $('#m-status');
-  if (status) status.textContent = '';
 
   dyn.innerHTML = modalBodyHtml();
   bindModalBody();
 
+  const save = $('#m-save');
+  if (save) save.disabled = !m.selected;
+  const status = $('#m-status');
+  if (status) status.textContent = m.selected ? `已选择：${pickName(m.selected.zh, m.selected.en)}` : '';
+
+  // 高度：只有两侧内容确实不同高时才过渡；同高就一动不动
   if (!fixedSize) {
     const prevH = box.style.height;
     box.style.height = 'auto';
     const toH = box.offsetHeight;
     box.style.height = `${fromH}px`;
     void box.offsetHeight;
-    // 先让 transition 生效（强制一次布局），再改高度，否则第一条变化会被当成初始值直接跳过去
-    box.classList.add('is-resizing');
-    void box.offsetHeight;
-    box.style.height = `${toH}px`;
-    const done = (e) => {
-      if (e.target !== box || e.propertyName !== 'height') return;
-      box.removeEventListener('transitionend', done);
-      box.classList.remove('is-resizing');
+    if (Math.abs(toH - fromH) >= 1) {
+      // 先让 transition 生效（强制一次布局），再改高度，否则第一条变化会被当成初始值直接跳过去
+      box.classList.add('is-resizing');
+      void box.offsetHeight;
+      box.style.height = `${toH}px`;
+      const done = (e) => {
+        if (e.target !== box || e.propertyName !== 'height') return;
+        box.removeEventListener('transitionend', done);
+        box.classList.remove('is-resizing');
+        box.style.height = prevH;
+      };
+      box.addEventListener('transitionend', done);
+    } else {
       box.style.height = prevH;
-    };
-    box.addEventListener('transitionend', done);
+    }
   }
 
+  if (m.selected) loadParts(); // 恢复的是套装时补齐散件
   void dyn.offsetHeight;
   dyn.classList.remove('is-out'); // 淡入
 }
@@ -2354,10 +2396,12 @@ async function doSearch() {
     $('#m-results').innerHTML = renderResults();
     return;
   }
+  const kind = m.kind; // 请求期间可能切到另一侧，回来要认这一侧
   $('#m-status').textContent = '搜索中…';
   try {
-    const r = m.kind === 'auction' ? await api.searchWeapons(q) : await api.searchItems(q);
-    m.results = (r.candidates || []).map((c) => ({ ...c, weaponSlug: m.kind === 'auction' ? c.slug : undefined }));
+    const r = kind === 'auction' ? await api.searchWeapons(q) : await api.searchItems(q);
+    if (S.modal !== m || m.kind !== kind) return;
+    m.results = (r.candidates || []).map((c) => ({ ...c, weaponSlug: kind === 'auction' ? c.slug : undefined }));
     $('#m-results').innerHTML = renderResults();
     $('#m-status').textContent = r.candidates.length
       ? `${r.candidates.length} 个候选 · 置信度 ${r.confidence}`
