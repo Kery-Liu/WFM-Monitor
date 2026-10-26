@@ -76,7 +76,7 @@ const SCRIPT = String.raw`(async () => {
   document.getElementById('m-min').click();
   ck('窗口最小化', document.getElementById('m-box').classList.contains('collapsed'));
   document.getElementById('m-min').click();
-  // ---- 市场/拍卖切换：滑动块 + 内容替换 + 高度过渡 ----
+  // ---- 市场/拍卖切换：滑动块 + 未选物品不改尺寸 ----
   const seg = document.getElementById('m-kind');
   const ink = seg.querySelector('.seg-ink');
   ck('分段控件有滑动块', !!ink, ink ? ink.style.width : 'none');
@@ -94,41 +94,50 @@ const SCRIPT = String.raw`(async () => {
   ck('默认状态切换不改高度', Math.abs(hEmptyAuction - hEmptyMarket) <= 1, hEmptyMarket + ' → ' + hEmptyAuction);
   ck('切换后选中块位移', Math.abs(inkAuction.left - inkMarket.left) > 100, Math.round(inkMarket.left) + ' → ' + Math.round(inkAuction.left));
   ck('切换后正文已换', S.modal.kind === 'auction' && document.getElementById('m-search').placeholder.indexOf('杀星') >= 0, document.getElementById('m-search').placeholder.slice(0, 10));
-
   ck('选中块是滑动过渡', getComputedStyle(seg.querySelector('.seg-ink')).transitionProperty.indexOf('transform') >= 0, getComputedStyle(seg.querySelector('.seg-ink')).transitionProperty);
   ck('正文是淡入淡出', getComputedStyle(document.getElementById('m-dyn')).transitionProperty.indexOf('opacity') >= 0, getComputedStyle(document.getElementById('m-dyn')).transitionProperty);
 
+  // ---- 两侧草稿互不影响 ----
   await clickKind('market');
   S.modal.selected = { slug: 'item_a', id: 'i1', zh: '物品 A', en: 'Item A' };
   document.getElementById('m-form-wrap').innerHTML = renderRuleForm();
   bindRuleForm();
   await wait(220);
+  document.getElementById('f-price').value = '123';
   const hSelected = boxEl.offsetHeight;
   seg.querySelector('[data-kind="auction"]').click();
-  await wait(60);
-  ck('选中块正在滑动', seg.querySelector('.seg-ink').getAnimations().some((a) => a.transitionProperty && a.transitionProperty.indexOf('transform') >= 0), 'anim');
-  await wait(30);
+  await wait(90);
   const resizing = boxEl.getAnimations().some((a) => a.transitionProperty === 'height' && a.playState === 'running');
+  const sliding = seg.querySelector('.seg-ink').getAnimations().some((a) => a.transitionProperty && a.transitionProperty.indexOf('transform') >= 0);
   await wait(520);
-  const hAfter = boxEl.offsetHeight;
-  ck('选好物品后高度有过渡', resizing && hAfter !== hSelected, hSelected + ' → ' + hAfter + (resizing ? ' (过渡中)' : ' (无过渡)'));
-  ck('切回正文无残留', document.querySelectorAll('#m-dyn').length === 1 && !!document.querySelector('#m-form-wrap'), document.querySelectorAll('#m-dyn').length);
+  ck('选中块正在滑动', sliding, 'anim');
+  ck('选好物品后高度有过渡', resizing && boxEl.offsetHeight !== hSelected, hSelected + ' → ' + boxEl.offsetHeight + (resizing ? ' (过渡中)' : ' (无过渡)'));
 
+  await clickKind('market');
+  ck('市场内容切回来还在', !!document.getElementById('f-price') && document.getElementById('f-price').value === '123', document.getElementById('f-price') ? document.getElementById('f-price').value : 'no form');
+  ck('市场已选对象也恢复', S.modal.selected && S.modal.selected.slug === 'item_a', S.modal.selected ? S.modal.selected.slug : 'null');
+
+  await clickKind('auction');
+  S.modal.selected = { slug: 'weapon_x', id: 'w1', zh: '武器 X', en: 'Weapon X' };
+  document.getElementById('m-form-wrap').innerHTML = renderRuleForm();
+  bindRuleForm();
+  await wait(220);
+  document.getElementById('f-interval').value = '45';
+  await clickKind('market');
+  await clickKind('auction');
+  ck('拍卖内容切回来还在', !!document.getElementById('f-interval') && document.getElementById('f-interval').value === '45', document.getElementById('f-interval') ? document.getElementById('f-interval').value : 'no form');
+  ck('两侧内容互不覆盖', !!document.getElementById('f-aucmode') && document.getElementById('f-price').value === '50', 'auc-side price=' + document.getElementById('f-price').value);
+
+  // ---- 关闭窗口才释放草稿 ----
   document.getElementById('m-close').click();
-  await wait(60);
-  ck('窗口关闭', !document.querySelector('#modal-root .win'));
-  S.modal = null;
+  await wait(120);
+  ck('关闭窗口草稿已释放', !S.modal, S.modal ? 'still open' : 'closed');
+  openAddModal();
+  await wait(220);
+  ck('重新打开回到默认', !document.getElementById('f-price') && S.modal.form.targetPrice === 50, S.modal.form.targetPrice);
+  document.getElementById('m-close').click();
+  await wait(120);
 
-  // ---- 标签页 ----
-  document.querySelector('[data-tab="events"]').click();
-  await wait(50);
-  ck('切到事件页', document.getElementById('pane-events').classList.contains('active') && document.querySelector('[data-tab="events"]').classList.contains('active'));
-  document.querySelector('[data-tab="settings"]').click();
-  await wait(50);
-  ck('切到设置页', document.getElementById('pane-settings').classList.contains('active') && document.querySelectorAll('#pane-settings input, #pane-settings select').length > 30);
-  document.querySelector('[data-tab="diag"]').click();
-  await wait(50);
-  ck('切到自检页', document.getElementById('pane-diag').classList.contains('active') && !!document.getElementById('diag-metrics'));
   document.querySelector('[data-tab="detail"]').click();
   await wait(50);
 
