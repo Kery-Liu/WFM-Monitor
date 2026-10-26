@@ -138,17 +138,25 @@ const SCRIPT = String.raw`(async () => {
   const probe = infos[0];
   probe.dispatchEvent(new MouseEvent('mouseenter'));
   await wait(60);
-  ck('气泡有 100ms 延迟', !document.querySelector('.tip.show'));
+  ck('气泡与图标同时延迟', !document.querySelector('.tip.show') && !probe.classList.contains('on'));
   await wait(320);
   const bubble = document.querySelector('.tip');
-  ck('气泡按时出现', !!bubble && bubble.classList.contains('show') && bubble.textContent.length > 0, bubble ? bubble.textContent.slice(0, 18) : 'none');
+  ck('气泡出现时图标同时亮', !!bubble && bubble.classList.contains('show') && probe.classList.contains('on') && bubble.textContent.length > 0, bubble ? bubble.textContent.slice(0, 18) : 'none');
   const origin = getComputedStyle(bubble).transformOrigin.split(' ');
   const oy = parseFloat(origin[1]);
   const flipped = bubble.classList.contains('flip');
   ck('气泡原点在贴边那一侧', flipped ? Math.abs(oy) < 1.5 : Math.abs(oy - bubble.offsetHeight) < 1.5, getComputedStyle(bubble).transformOrigin);
   probe.dispatchEvent(new MouseEvent('mouseleave'));
   await wait(240);
-  ck('气泡可收回', !document.querySelector('.tip.show'));
+  ck('气泡与图标同时收回', !document.querySelector('.tip.show') && !probe.classList.contains('on'));
+
+  const lblOf = (id) => {
+    const l = document.getElementById(id).closest('.field').querySelector('label');
+    return ((l.firstChild && l.firstChild.nodeValue) || '').trim();
+  };
+  ck('账号标签改为（发件人）', lblOf('s-smtp-user') === '账号（发件人）', lblOf('s-smtp-user'));
+  ck('收件人只保留标签', lblOf('s-smtp-to') === '收件人', lblOf('s-smtp-to'));
+  ck('私聊语言/账号不再有感叹号', !document.getElementById('s-whisper-lang').closest('.field').querySelector('.info') && !document.getElementById('s-smtp-user').closest('.field').querySelector('.info'));
 
   // 弹窗里的说明同样转成图标
   openAddModal();
@@ -163,25 +171,10 @@ const SCRIPT = String.raw`(async () => {
   document.querySelector('[data-tab="detail"]').click();
   await wait(80);
 
-  // ---- 磁吸：只挂主按钮、范围 60px、幅度克制 ----
-  ck('只有一个磁吸按钮', document.querySelectorAll('.btn.magnetic').length === 1, document.querySelectorAll('.btn.magnetic').length);
-  const btn = document.getElementById('btn-add');
-  const r0 = btn.getBoundingClientRect();
-  const atPoint = (x, y) => {
-    magMouse.x = x;
-    magMouse.y = y;
-    updateMagTargets();
-    return magItems[0];
-  };
-  const nearTop = atPoint(r0.left + r0.width / 2, r0.top - 8);
-  ck('靠近上边缘就触发', nearTop.ty < -0.2 && nearTop.ty > -2, nearTop.ty.toFixed(2));
-  const nearLeft = atPoint(r0.left - 8, r0.top + r0.height / 2);
-  ck('靠近左边缘横向靠近', nearLeft.tx <= -1.5 && nearLeft.tx >= -3.1, nearLeft.tx.toFixed(2));
-  const far = atPoint(r0.left + r0.width / 2, r0.top - 100);
-  ck('超出 60px 不再吸', far.tx === 0 && far.ty === 0, far.tx + ', ' + far.ty);
-  atPoint(r0.left + r0.width / 2, r0.top - 8); magTick();
-  ck('磁吸写入 transform 变量', /px$/.test(btn.style.getPropertyValue('--my')) && btn.style.getPropertyValue('--my') !== '0.00px', btn.style.getPropertyValue('--my'));
-  magMouse.x = -9999; magMouse.y = -9999; updateMagTargets(); magItems[0].x = 0; magItems[0].y = 0; magTick();
+  // ---- 磁吸已移除，主按钮改为悬停放大 ----
+  const addBtn = document.getElementById('btn-add');
+  ck('磁吸已移除', document.querySelectorAll('.btn.magnetic').length === 0 && !/translate3d/.test(getComputedStyle(addBtn).transform), getComputedStyle(addBtn).transform);
+  ck('主按钮悬停放大带过渡', /transform/.test(getComputedStyle(addBtn).transitionProperty), getComputedStyle(addBtn).transitionProperty);
   ck('卡片上浮是过渡而非瞬移', parseFloat(getComputedStyle(document.querySelector('.card')).transitionDuration) >= 0.2, getComputedStyle(document.querySelector('.card')).transitionDuration);
 
   // ---- 主题往返 ----
