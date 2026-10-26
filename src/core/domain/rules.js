@@ -131,7 +131,8 @@ function snapshotAuction(auctions, target) {
     bestPrice,
     targetPrice,
     matched,
-    delta: matched ? targetPrice - bestPrice : null,
+    // 和挂单口径一致：正数=优于目标，负数=还差多少；不能只在达标时才有值
+    delta: bestPrice != null && targetPrice > 0 ? targetPrice - bestPrice : null,
     bestOrder: best ? compactAuction(best.a, best.price) : null,
     top: priced.slice(0, 10).map((x) => compactAuction(x.a, x.price)),
     countAtTarget: priced.filter((x) => x.price <= targetPrice).length,

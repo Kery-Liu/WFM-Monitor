@@ -84,6 +84,10 @@ class Scheduler extends EventEmitter {
     const nowDisabled = m.target.enabled && !target.enabled;
     m.target = target;
 
+    // 目标价/方向/筛选变了：立刻用本地订单缓存重算，否则卡片和详情页的差距
+    // 会停留在旧规则上，直到下一轮轮询（最长一个 interval）
+    const ruleChanged = m.refreshSnapshot();
+
     if (nowDisabled) {
       // 停用 = 立即刹车：清空下次调度，状态标记为 disabled
       m.state = 'disabled';
@@ -93,6 +97,9 @@ class Scheduler extends EventEmitter {
       if (!this.config.get().global.paused) m.scheduleIn(300); // 重新启用 → 立刻跑一次
     } else if (intervalChanged) {
       m.scheduleIn(500);
+    } else if (ruleChanged && m.target.enabled && m.state !== 'checking' && m.state !== 'error') {
+      // 快照已按新规则重算，状态跟着达标结果走
+      m.state = m.snapshot?.matched ? 'trigger' : 'ok';
     }
     this.emit('update', m.view());
     return m;

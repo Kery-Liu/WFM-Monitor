@@ -68,6 +68,19 @@ class Monitor extends EventEmitter {
     this.emit('update', this.view());
   }
 
+  /**
+   * 规则变更（改目标价 / 方向 / 筛选）后，用本地缓存订单立即重算快照
+   * 只刷新展示层（最优价、差价、达标、挂单表），不触发通知 —— 改个价格不该弹窗
+   * @returns {boolean} 是否真的重算了
+   */
+  refreshSnapshot() {
+    if (!Array.isArray(this.rawCache) || !this.rawCache.length) return false;
+    // 缓存太旧就交给下一轮轮询，避免拿陈旧基准算出错误的「已达标」
+    if (Date.now() - this.rawCacheAt > Math.max(this.intervalMs * 3, 60000)) return false;
+    this.snapshot = snapshotFor(this.target, this.rawCache);
+    return true;
+  }
+
   async tick() {
     if (this.busy) return;
     const forced = this.forceRun;
