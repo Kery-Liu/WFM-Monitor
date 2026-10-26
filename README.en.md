@@ -24,23 +24,11 @@
 - Tray resident: closing the window keeps monitoring; a global hotkey can trigger "check all".
 - UI and themes: bilingual Chinese/English interface with dark and light themes; item names and market links follow the language.
 
-## Screenshots
-
-| Target detail: best price, orders, 48h trend | New target: search candidates and set parts |
-|---|---|
-| ![Target detail](docs/screenshots/02-监控详情.png) | ![New target](docs/screenshots/03-新建监控-市场.png) |
-
-| Riven rules: stats, polarity, re-rolls, MR | Network self-check, layer by layer |
-|---|---|
-| ![Riven rules](docs/screenshots/04-紫卡规则.png) | ![Network self-check](docs/screenshots/06-网络自检.png) |
-
-*The interface ships in both Chinese and English; screenshots above show the Chinese build, and the English UI is available in Settings → Appearance.*
-
 ## Install
 
 ### Option 1: Installer (recommended)
 
-1. Download the latest installer `WFM-Monitor-Setup-1.0.1.exe` from the Releases page.
+1. Download the latest installer `WFM-Monitor-Setup-1.1.5.exe` from the Releases page.
 2. Run it and pick an install folder (default `%LOCALAPPDATA%\Programs\WFM-Monitor`). **No administrator rights needed.**
 3. The app starts automatically; desktop and Start Menu shortcuts are created.
 4. On first launch it downloads the item catalog in the background (about 10–30 seconds), then you can search and add targets.
@@ -121,6 +109,23 @@ This tool **only calls the official API (api.warframe.market) and never scrapes 
 ## Fair use
 
 warframe.market allows 3 requests/second; this app defaults to 2 and should never be configured below a 340 ms interval. Please respect the site's terms and use it for personal price alerts only. This is an unofficial fan project; Warframe belongs to Digital Extremes and market data to warframe.market.
+
+---
+
+## Version history
+
+| Version | Date | What changed |
+|---|---|---|
+| v1.0.0 | 2026-10-24 | First release: polling + WebSocket pricing, riven auction subscriptions by stats, 7-layer network self-check, desktop / webhook / email notifications, Chinese & English UI with dark & light themes |
+| v1.0.1 | 2026-10-26 | Fixes: prime part icons, price gap not refreshing, global hotkey not registered by default, settings switches clickable across the whole row, startup blocked by an old instance |
+| v1.1.0 | 2026-10-26 | UI overhaul: design scale (radius / type / spacing / shadows), sidebar aligned to a 14px gutter, cards & panels switch to a 1px ring + soft shadow, glass topbar, unified segmented control, themed trend chart with guide lines, staggered detail entrance |
+| v1.1.1 | 2026-10-26 | Stronger glass (gradient edge + refraction filter), 3px springy card hover, settings hints turned into '!' hover bubbles, magnetic buttons (removed again in 1.1.2) |
+| v1.1.2 | 2026-10-26 | Edge highlight removed from panels & dialogs (kept on sidebar cards only), magnetic pull replaced by a subtle hover grow on "New monitor", fewer '!', segmented control recoloured to frosted glass (fixes the muddy white block) |
+| v1.1.3 | 2026-10-26 | Market / riven switch now slides the selected segment, cross-fades the body and eases the window height |
+| v1.1.4 | 2026-10-26 | Market and riven keep their own drafts: switching never loses input and restores it on the way back; only closing the window discards them |
+| v1.1.5 | 2026-10-26 | Fixes the window growing then shrinking when switching in the default (empty) state |
+
+See [CHANGELOG.md](./CHANGELOG.md) for the symptom, root cause, fix and verification of every release.
 
 ---
 
