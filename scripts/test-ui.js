@@ -125,11 +125,71 @@ const SCRIPT = String.raw`(async () => {
   const anim2 = getComputedStyle(document.querySelector('#pane-detail .stat')).animationName;
   ck('错开入场只播一次', anim1 === 'rise' && anim2 !== 'rise', anim1 + ' / ' + anim2);
 
+  // ---- 字段说明：'!' 图标 + 悬停气泡 ----
+  document.querySelector('[data-tab="settings"]').click();
+  await wait(500);
+  const infos = document.querySelectorAll('#pane-settings .info');
+  ck('设置页生成说明图标', infos.length >= 20, infos.length);
+  const hiddenHints = Array.prototype.filter.call(
+    document.querySelectorAll('#pane-settings .hint'),
+    (h) => getComputedStyle(h).display === 'none'
+  ).length;
+  ck('灰色说明文字已隐藏', hiddenHints >= 20, hiddenHints);
+  const probe = infos[0];
+  probe.dispatchEvent(new MouseEvent('mouseenter'));
+  await wait(60);
+  ck('气泡有 100ms 延迟', !document.querySelector('.tip.show'));
+  await wait(320);
+  const bubble = document.querySelector('.tip');
+  ck('气泡按时出现', !!bubble && bubble.classList.contains('show') && bubble.textContent.length > 0, bubble ? bubble.textContent.slice(0, 18) : 'none');
+  const origin = getComputedStyle(bubble).transformOrigin.split(' ');
+  const oy = parseFloat(origin[1]);
+  const flipped = bubble.classList.contains('flip');
+  ck('气泡原点在贴边那一侧', flipped ? Math.abs(oy) < 1.5 : Math.abs(oy - bubble.offsetHeight) < 1.5, getComputedStyle(bubble).transformOrigin);
+  probe.dispatchEvent(new MouseEvent('mouseleave'));
+  await wait(240);
+  ck('气泡可收回', !document.querySelector('.tip.show'));
+
+  // 弹窗里的说明同样转成图标
+  openAddModal();
+  await wait(120);
+  S.modal.selected = { slug: 'item_a', id: 'i1', zh: '物品 A', en: 'Item A' };
+  document.getElementById('m-form-wrap').innerHTML = renderRuleForm();
+  bindRuleForm();
+  await wait(200);
+  ck('弹窗说明也转图标', document.querySelectorAll('#modal-root .info').length >= 4, document.querySelectorAll('#modal-root .info').length);
+  document.getElementById('m-close').click();
+  await wait(80);
+  document.querySelector('[data-tab="detail"]').click();
+  await wait(80);
+
+  // ---- 磁吸：只挂主按钮、范围 60px、幅度克制 ----
+  ck('只有一个磁吸按钮', document.querySelectorAll('.btn.magnetic').length === 1, document.querySelectorAll('.btn.magnetic').length);
+  const btn = document.getElementById('btn-add');
+  const r0 = btn.getBoundingClientRect();
+  const atPoint = (x, y) => {
+    magMouse.x = x;
+    magMouse.y = y;
+    updateMagTargets();
+    return magItems[0];
+  };
+  const nearTop = atPoint(r0.left + r0.width / 2, r0.top - 8);
+  ck('靠近上边缘就触发', nearTop.ty < -0.2 && nearTop.ty > -2, nearTop.ty.toFixed(2));
+  const nearLeft = atPoint(r0.left - 8, r0.top + r0.height / 2);
+  ck('靠近左边缘横向靠近', nearLeft.tx <= -1.5 && nearLeft.tx >= -3.1, nearLeft.tx.toFixed(2));
+  const far = atPoint(r0.left + r0.width / 2, r0.top - 100);
+  ck('超出 60px 不再吸', far.tx === 0 && far.ty === 0, far.tx + ', ' + far.ty);
+  atPoint(r0.left + r0.width / 2, r0.top - 8); magTick();
+  ck('磁吸写入 transform 变量', /px$/.test(btn.style.getPropertyValue('--my')) && btn.style.getPropertyValue('--my') !== '0.00px', btn.style.getPropertyValue('--my'));
+  magMouse.x = -9999; magMouse.y = -9999; updateMagTargets(); magItems[0].x = 0; magItems[0].y = 0; magTick();
+  ck('卡片上浮是过渡而非瞬移', parseFloat(getComputedStyle(document.querySelector('.card')).transitionDuration) >= 0.2, getComputedStyle(document.querySelector('.card')).transitionDuration);
+
   // ---- 主题往返 ----
+  const bgVar = () => getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
   applyTheme('light', { skipRender: true });
-  const lightBg = cs(document.body, 'backgroundColor');
+  const lightBg = bgVar();
   applyTheme('dark', { skipRender: true });
-  const darkBg = cs(document.body, 'backgroundColor');
+  const darkBg = bgVar();
   ck('主题切换生效', lightBg !== darkBg, lightBg + ' / ' + darkBg);
   ck('浅色下拉不起白字', (() => { applyTheme('light', { skipRender: true }); const c = cs(q('.tab'), 'color'); applyTheme('dark', { skipRender: true }); return c !== 'rgb(231, 238, 247)'; })(), '');
 
