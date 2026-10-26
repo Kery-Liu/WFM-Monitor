@@ -134,7 +134,7 @@ Stack: Electron + vanilla HTML/CSS/JS. No frontend framework, no bundler. All lo
 |---|---|
 | `src/main/main.js` | Electron main process: window, tray, global hotkey, native notifications, IPC whitelist |
 | `src/main/preload.js` | Restricted bridge between renderer and main |
-| `src/web/index.html` / `styles.css` | Page skeleton and theme variables (dark / light) |
+| `src/web/index.html` / `styles.css` | Page skeleton, design scale (radius / type / spacing / shadows) and dark & light theme tokens |
 | `src/web/app.js` | All UI logic: cards, forms, chart, settings, dialogs |
 | `src/web/i18n.js` / `i18n-dict.js` | Translation engine and the "Chinese source → English" dictionary, shared with main-process notifications |
 | `src/web/theme-boot.js` | Paints the first frame correctly to avoid theme flicker |
@@ -162,6 +162,7 @@ Dependency direction is fixed: `http → sources → domain → engine → notif
 4. No SQLite or other native modules; they break Electron packaging via ABI mismatch.
 5. "Disabled", "globally paused" and "manual check" are independent states — run the matching regression scripts after touching them.
 6. After changing UI copy, run `npm run test:i18n`; it launches the real app and fails on leftover Chinese in the English UI.
+7. After changing `src/web/styles.css` or renderer markup, run `npm run test:ui` — 30 assertions cover the type scale, control behaviour, themes and overflow.
 
 ### Commands
 
@@ -170,6 +171,7 @@ Dependency direction is fixed: `http → sources → domain → engine → notif
 | `npm start` / `npm run web` | Desktop mode / headless mode |
 | `npm run test:realtime` and other `test:*` | Regressions for stream, cooldown, disabling, errors, notifications, remote control |
 | `npm run test:update` | v1.0.1 regressions: instant gap refresh, default hotkey, prime part icons, config migration |
+| `npm run test:ui` | UI style regressions: scale, control behaviour, themes, no overflow at the minimum window size |
 | `npm run audit` | Catalog health check |
 | `npm run seed` | Rebuild the bundled catalog snapshot (`assets/catalog.seed.json`) |
 | `npm run pack` | builder-free portable folder (`dist/WFM-Monitor-v<version>`) |

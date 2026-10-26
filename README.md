@@ -136,7 +136,7 @@ Windows「设置 → 应用」里卸载「WFM 价格监控」。卸载**不会**
 |---|---|
 | `src/main/main.js` | Electron 主进程：窗口、托盘、全局快捷键、系统通知、IPC 白名单 |
 | `src/main/preload.js` | 渲染层与主进程之间的桥，只暴露受限 API |
-| `src/web/index.html` / `styles.css` | 页面骨架与主题变量（深黑 / 亮白） |
+| `src/web/index.html` / `styles.css` | 页面骨架、设计刻度（圆角/字号/间距/投影）与深黑 / 亮白主题变量 |
 | `src/web/app.js` | 全部界面逻辑：卡片、表单、走势图、设置页、弹窗 |
 | `src/web/i18n.js` / `i18n-dict.js` | 界面翻译引擎与「中文原文 → 英文」词典，主进程通知文案共用同一本词典 |
 | `src/web/theme-boot.js` | 首帧上色，避免切主题闪屏 |
@@ -164,6 +164,7 @@ Windows「设置 → 应用」里卸载「WFM 价格监控」。卸载**不会**
 4. 不引入 SQLite 等原生依赖，避免 Electron 打包 ABI 不匹配。
 5. 「停用」「全局暂停」「手动检查」是三套独立状态，改动时跑对应回归脚本。
 6. 改界面文案后跑 `npm run test:i18n`，英文残留检查会真实启动一次应用。
+7. 改 `src/web/styles.css` 或渲染层结构后跑 `npm run test:ui`，30 项断言覆盖刻度、控件交互、主题与溢出。
 
 ### 常用命令
 
@@ -172,6 +173,7 @@ Windows「设置 → 应用」里卸载「WFM 价格监控」。卸载**不会**
 | `npm start` / `npm run web` | 桌面模式 / 无 GUI 模式 |
 | `npm run test:realtime` 等 `test:*` | 实时流、冷却、停用、错误分类、通知、远程控制回归 |
 | `npm run test:update` | v1.0.1 回归：改价即时刷新 / 默认快捷键 / Prime 部件图标 / 配置迁移 |
+| `npm run test:ui` | 界面样式回归：刻度、控件交互、主题切换、最小窗口无溢出 |
 | `npm run audit` | 物品库体检 |
 | `npm run seed` | 重建随包物品清单快照 `assets/catalog.seed.json` |
 | `npm run pack` | 免 electron-builder 的绿色版目录（`dist/WFM-Monitor-v<版本>`） |
