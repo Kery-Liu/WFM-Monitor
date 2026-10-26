@@ -88,11 +88,20 @@ const SCRIPT = String.raw`(async () => {
   await clickKind('market');
   const hEmptyMarket = boxEl.offsetHeight;
   const inkMarket = seg.querySelector('.seg-ink').getBoundingClientRect();
-  await clickKind('auction');
+  seg.querySelector('[data-kind="auction"]').click();
+  // 默认状态切换：整个过程中窗口高度一帧都不允许变
+  const hTrack = [];
+  for (let i = 0; i < 12; i += 1) {
+    await wait(25);
+    hTrack.push(Math.round(boxEl.getBoundingClientRect().height * 10) / 10);
+  }
+  await wait(320);
   const hEmptyAuction = boxEl.offsetHeight;
   const inkAuction = seg.querySelector('.seg-ink').getBoundingClientRect();
-  ck('默认状态切换不改高度', Math.abs(hEmptyAuction - hEmptyMarket) <= 1, hEmptyMarket + ' → ' + hEmptyAuction);
+  const hSet = Array.from(new Set(hTrack));
+  ck('默认状态切换全程尺寸不变', hSet.length === 1 && Math.abs(hEmptyAuction - hEmptyMarket) <= 1, hSet.join(' / '));
   ck('切换后选中块位移', Math.abs(inkAuction.left - inkMarket.left) > 100, Math.round(inkMarket.left) + ' → ' + Math.round(inkAuction.left));
+  ck('切换后说明即时收起', document.querySelectorAll('#m-dyn .hint:not([data-tip-bound])').length === 0, document.querySelectorAll('#m-dyn .hint:not([data-tip-bound])').length);
   ck('切换后正文已换', S.modal.kind === 'auction' && document.getElementById('m-search').placeholder.indexOf('杀星') >= 0, document.getElementById('m-search').placeholder.slice(0, 10));
   ck('选中块是滑动过渡', getComputedStyle(seg.querySelector('.seg-ink')).transitionProperty.indexOf('transform') >= 0, getComputedStyle(seg.querySelector('.seg-ink')).transitionProperty);
   ck('正文是淡入淡出', getComputedStyle(document.getElementById('m-dyn')).transitionProperty.indexOf('opacity') >= 0, getComputedStyle(document.getElementById('m-dyn')).transitionProperty);
