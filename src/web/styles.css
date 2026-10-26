@@ -492,11 +492,12 @@ select { cursor: pointer; }
 
 /* 分段控制器：一条轨道 + 抬起的选中块，全应用只有这一种「多选一」样式 */
 .seg {
-  display: flex; gap: 2px; padding: 3px; flex-wrap: wrap;
+  display: flex; gap: 2px; padding: 3px; flex-wrap: wrap; position: relative; isolation: isolate;
   background: var(--seg-track); border-radius: var(--r-sm);
   box-shadow: inset 0 0 0 1px var(--seg-track-line);
 }
 .seg button {
+  position: relative; z-index: 1;
   flex: 1 1 auto; min-width: 78px; background: transparent; border: 0; color: var(--muted);
   padding: 7px 10px; border-radius: 6px; cursor: pointer; font: inherit; font-size: var(--fs-sm);
   transition: color var(--dur-fast), background var(--dur-fast), box-shadow var(--dur-fast);
@@ -507,6 +508,19 @@ select { cursor: pointer; }
   box-shadow: inset 0 0 0 1px var(--seg-on-line), var(--seg-on-shadow);
   backdrop-filter: blur(4px) saturate(130%);
 }
+/* 有了滑动选中块之后，选中态只保留文字样式，块由 .seg-ink 统一绘制 */
+.seg.has-ink button.on { background: transparent; box-shadow: none; backdrop-filter: none; }
+.seg-ink {
+  position: absolute; top: 3px; bottom: 3px; left: 0; width: 0; z-index: 0;
+  border-radius: 6px;
+  background: var(--seg-on);
+  box-shadow: inset 0 0 0 1px var(--seg-on-line), var(--seg-on-shadow);
+  backdrop-filter: blur(4px) saturate(130%);
+  transform: translate3d(0, 0, 0);
+  transition: transform .26s var(--ease-spring), width .26s var(--ease-spring);
+  pointer-events: none;
+}
+.seg.no-ink-anim .seg-ink { transition: none; }
 
 /* 开关只在「轨道 + 文字」这块区域可点：inline-flex 收缩到内容宽度，
    否则 label 作为块级 flex 会撑满整行，点行尾空白也会误触 */
@@ -673,6 +687,9 @@ select { cursor: pointer; }
 .win-btn:hover { background: var(--hover); color: var(--text); }
 .win-btn.close:hover { background: #c4423b; color: #fff; }
 .win .modal-body { flex: 1; min-height: 0; }
+.win.is-resizing { transition: height .26s var(--ease); }
+#m-dyn { transition: opacity var(--dur) var(--ease); }
+#m-dyn.is-out { opacity: 0; transition: opacity 40ms linear; }
 .win .modal-foot { flex: none; }
 .win-mask { cursor: default; }
 @keyframes pop { from { opacity: 0; transform: translateY(8px) scale(.992) } to { opacity: 1; transform: none } }

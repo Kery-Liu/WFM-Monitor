@@ -48,6 +48,7 @@ function siteRoot() {
 
 function applyI18n() {
   if (I18N) I18N.apply(document.body);
+  syncAllSegInk(false); // 文案长度变了，选中块要重新贴合
 }
 
 /** 切换界面语言：文本是渲染时生成的，必须整体重绘 */
@@ -562,6 +563,7 @@ async function boot() {
 
 function bindGlobal() {
   initHints();
+  window.addEventListener('resize', () => syncAllSegInk(false));
   $('#tabs').addEventListener('click', async (e) => {
     const btn = e.target.closest('.tab');
     if (!btn) return;
@@ -2042,6 +2044,165 @@ function winIcon(kind) {
   return `<svg ${common} aria-hidden="true"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg>`;
 }
 
+/**
+ * 分段控件的滑动选中块：位置与宽度跟着当前按钮走，切换时用 transform 滑过去。
+ * animate=false 用于首次渲染/重排，直接落位不做动画。
+ */
+function syncSegInk(seg, animate) {
+  if (!seg) return;
+  const on = seg.querySelector('button.on');
+  if (!on) return;
+  let ink = seg.querySelector(':scope > .seg-ink');
+  if (!ink) {
+    ink = document.createElement('span');
+    ink.className = 'seg-ink';
+    ink.setAttribute('aria-hidden', 'true');
+    seg.insertBefore(ink, seg.firstChild);
+    animate = false;
+  }
+  const x = on.offsetLeft;
+  const w = on.offsetWidth;
+  if (!w) return;
+  seg.classList.add('has-ink');
+  if (!animate) {
+    seg.classList.add('no-ink-anim');
+    requestAnimationFrame(() => seg.classList.remove('no-ink-anim'));
+  }
+  ink.style.width = `${w}px`;
+  ink.style.transform = `translate3d(${x}px, 0, 0)`;
+}
+
+function syncAllSegInk(animate) {
+  $$('.seg').forEach((seg) => syncSegInk(seg, !!animate));
+}
+
+/** 弹窗正文（类型切换时只重建这一块，窗口与分段控件保持不动） */
+function modalBodyHtml() {
+  const m = S.modal;
+  const isAuction = m.kind === 'auction';
+  const formHtml = m.selected ? renderRuleForm() : `<p class="note m0">请先在上方选择${isAuction ? '武器' : '物品'}。</p>`;
+  return `
+    <div class="field" style="margin-top:var(--s-4)">
+      <label>${isAuction ? '搜索武器' : '搜索物品'}${m.selected ? '（重新搜索可更换）' : ''}</label>
+      <input type="text" id="m-search" placeholder="${isAuction ? '例如：杀星 / kulstar / 女魔' : '例如：ash prime 一套 / 杀星 / forma'}" value="${esc(m.query)}"/>
+      <div class="hint">支持中文、英文、别名：p=prime，套/set，图/bp。输入后从下方候选里点选，避免选错。</div>
+    </div>
+    <div class="result-list" id="m-results">${renderResults()}</div>
+    <div id="m-form-wrap" style="margin-top:var(--s-5)">${formHtml}</div>`;
+}
+
+/** 绑定正文里的搜索、候选项与规则表单 */
+function bindModalBody() {
+  const m = S.modal;
+  if (!m) return;
+  const search = $('#m-search');
+  let timer = null;
+  if (search) {
+    search.addEventListener('input', () => {
+      m.query = search.value;
+      clearTimeout(timer);
+      timer = setTimeout(doSearch, 220);
+    });
+    search.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { clearTimeout(timer); doSearch(); }
+    });
+  }
+
+  const results = $('#m-results');
+  if (results) {
+    results.addEventListener('click', (e) => {
+      const row = e.target.closest('.result');
+      if (!row || !row.dataset.idx) return;
+      const c = m.results[Number(row.dataset.idx)];
+      if (!c) return;
+      syncForm();
+      m.selected = c;
+      m.results = [];
+      m.parts = [];
+      m.partsFor = '';
+      m.query = pickName(c.zh, c.en) || c.slug;
+      if (search) search.value = m.query;
+      results.innerHTML = renderResults();
+      $('#m-status').textContent = `已选择：${pickName(c.zh, c.en)}`;
+      $('#m-form-wrap').innerHTML = renderRuleForm();
+      bindRuleForm();
+      $('#m-save').disabled = false;
+      loadParts();
+    });
+
+    // 官方图缺失/加载失败时换成随包占位图；占位图也失败才隐藏（error 不冒泡，用捕获阶段接）
+    results.addEventListener('error', (e) => {
+      const img = e.target;
+      if (!img || img.tagName !== 'IMG') return;
+      const fb = img.dataset.fallback || PLACEHOLDER_ICON;
+      if (img.dataset.failed !== '1') {
+        img.dataset.failed = '1';
+        img.src = fb;
+        return;
+      }
+      img.classList.add('broken');
+    }, true);
+  }
+
+  if (m.selected) bindRuleForm();
+}
+
+/**
+ * 市场 / 紫卡拍卖之间切换：
+ * 选中块先滑过去，正文 40ms 淡出 → 换内容 → 窗口高度平滑过渡 → 正文淡入。
+ * 没有选物品时两侧内容同高，高度不会变化。
+ */
+async function switchKind(next) {
+  const m = S.modal;
+  if (!m || m.kind === next) return;
+  const box = $('#m-box');
+  const dyn = $('#m-dyn');
+  if (!box || !dyn) return;
+
+  const fromH = box.getBoundingClientRect().height;
+  const fixedSize = box.classList.contains('maxed') || box.classList.contains('collapsed');
+
+  dyn.classList.add('is-out'); // 40ms 淡出
+  await new Promise((r) => setTimeout(r, 40));
+
+  m.kind = next;
+  m.selected = null;
+  m.results = [];
+  m.query = '';
+  m.parts = [];
+  m.partsFor = '';
+  m.form = defaultForm(next);
+  const save = $('#m-save');
+  if (save) save.disabled = true;
+  const status = $('#m-status');
+  if (status) status.textContent = '';
+
+  dyn.innerHTML = modalBodyHtml();
+  bindModalBody();
+
+  if (!fixedSize) {
+    const prevH = box.style.height;
+    box.style.height = 'auto';
+    const toH = box.offsetHeight;
+    box.style.height = `${fromH}px`;
+    void box.offsetHeight;
+    // 先让 transition 生效（强制一次布局），再改高度，否则第一条变化会被当成初始值直接跳过去
+    box.classList.add('is-resizing');
+    void box.offsetHeight;
+    box.style.height = `${toH}px`;
+    const done = (e) => {
+      if (e.target !== box || e.propertyName !== 'height') return;
+      box.removeEventListener('transitionend', done);
+      box.classList.remove('is-resizing');
+      box.style.height = prevH;
+    };
+    box.addEventListener('transitionend', done);
+  }
+
+  void dyn.offsetHeight;
+  dyn.classList.remove('is-out'); // 淡入
+}
+
 function drawModal() {
   const m = S.modal;
   const root = $('#modal-root');
@@ -2054,7 +2215,6 @@ function drawModal() {
     return;
   }
   const isAuction = m.kind === 'auction';
-  const formHtml = m.selected ? renderRuleForm() : `<p class="note m0">请先在上方选择${isAuction ? '武器' : '物品'}。</p>`;
   const title = m.existing ? `编辑监控 · ${m.existing.label || ''}` : '新建监控';
   root.innerHTML = `
   <div class="modal-mask win-mask" id="m-mask">
@@ -2072,14 +2232,7 @@ function drawModal() {
           <button data-kind="market" class="${!isAuction ? 'on' : ''}">市场挂单</button>
           <button data-kind="auction" class="${isAuction ? 'on' : ''}">紫卡拍卖</button>
         </div>
-
-        <div class="field" style="margin-top:var(--s-4)">
-          <label>${isAuction ? '搜索武器' : '搜索物品'}${m.selected ? '（重新搜索可更换）' : ''}</label>
-          <input type="text" id="m-search" placeholder="${isAuction ? '例如：杀星 / kulstar / 女魔' : '例如：ash prime 一套 / 杀星 / forma'}" value="${esc(m.query)}"/>
-          <div class="hint">支持中文、英文、别名：p=prime，套/set，图/bp。输入后从下方候选里点选，避免选错。</div>
-        </div>
-        <div class="result-list" id="m-results">${renderResults()}</div>
-        <div id="m-form-wrap" style="margin-top:var(--s-5)">${formHtml}</div>
+        <div id="m-dyn">${modalBodyHtml()}</div>
       </div>
       <div class="modal-foot">
         <span class="note" id="m-status" style="margin-right:auto"></span>
@@ -2151,64 +2304,18 @@ function drawModal() {
     document.removeEventListener('mouseup', onUp);
   };
 
+  // 切换类型：只换正文，窗口与分段控件不动；选中块先滑过去
   $('#m-kind').addEventListener('click', (e) => {
-    const b = e.target.closest('button[data-kind]');
-    if (!b || b.dataset.kind === m.kind) return;
-    m.kind = b.dataset.kind;
-    m.selected = null;
-    m.results = [];
-    m.query = '';
-    m.parts = [];
-    m.partsFor = '';
-    m.form = defaultForm(m.kind);
-    drawModal();
+    const btn = e.target.closest('button[data-kind]');
+    if (!btn || btn.dataset.kind === m.kind) return;
+    const seg = $('#m-kind');
+    $$('button', seg).forEach((x) => x.classList.toggle('on', x === btn));
+    syncSegInk(seg, true);
+    switchKind(btn.dataset.kind);
   });
 
-  const search = $('#m-search');
-  let timer = null;
-  search.addEventListener('input', () => {
-    m.query = search.value;
-    clearTimeout(timer);
-    timer = setTimeout(doSearch, 220);
-  });
-  search.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { clearTimeout(timer); doSearch(); }
-  });
-
-  $('#m-results').addEventListener('click', (e) => {
-    const row = e.target.closest('.result');
-    if (!row || !row.dataset.idx) return;
-    const c = m.results[Number(row.dataset.idx)];
-    if (!c) return;
-    syncForm();
-    m.selected = c;
-    m.results = [];
-    m.parts = [];
-    m.partsFor = '';
-    m.query = pickName(c.zh, c.en) || c.slug;
-    if (search) search.value = m.query;
-    $('#m-results').innerHTML = renderResults();
-    $('#m-status').textContent = `已选择：${pickName(c.zh, c.en)}`;
-    $('#m-form-wrap').innerHTML = renderRuleForm();
-    bindRuleForm();
-    $('#m-save').disabled = false;
-    loadParts();
-  });
-
-  // 官方图缺失/加载失败时换成随包占位图；占位图也失败才隐藏（error 不冒泡，用捕获阶段接）
-  $('#m-results').addEventListener('error', (e) => {
-    const img = e.target;
-    if (!img || img.tagName !== 'IMG') return;
-    const fb = img.dataset.fallback || PLACEHOLDER_ICON;
-    if (img.dataset.failed !== '1') {
-      img.dataset.failed = '1';
-      img.src = fb;
-      return;
-    }
-    img.classList.add('broken');
-  }, true);
-
-  if (m.selected) bindRuleForm();
+  syncSegInk($('#m-kind'), false);
+  bindModalBody();
   $('#m-save').addEventListener('click', submitModal);
 }
 
@@ -2393,11 +2500,13 @@ function bindRuleForm() {
   const seg = (id, key, after) => {
     const el = $(id);
     if (!el) return;
+    syncSegInk(el, false);
     el.addEventListener('click', (e) => {
       const b = e.target.closest('button[data-v]');
       if (!b) return;
       f[key] = b.dataset.v;
       $$('button', el).forEach((x) => x.classList.toggle('on', x === b));
+      syncSegInk(el, true);
       if (after) after();
     });
   };
