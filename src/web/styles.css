@@ -141,7 +141,7 @@
   --pill-green-brd: #b6dfc4;
   --pill-warn-brd: #e0c294;
   --danger-brd: #e3b0b0;
-  --seg-track: #eff3f8;
+  --seg-track: #e7edf5;
   --seg-on: linear-gradient(180deg, #ffffff, #fbfdff);
   --sh-1: 0 0 0 1px var(--edge, var(--line)), 0 1px 2px rgba(16, 24, 40, .06);
   --sh-2: 0 0 0 1px var(--edge, var(--line)), 0 8px 22px rgba(16, 24, 40, .07);
@@ -473,7 +473,7 @@ select { cursor: pointer; }
   color: var(--gold); background: var(--seg-on); font-weight: 600;
   box-shadow: 0 1px 3px rgba(0, 0, 0, .28), inset 0 0 0 1px rgba(224, 179, 84, .28);
 }
-:root[data-theme="light"] .seg button.on { box-shadow: 0 1px 2px rgba(16, 24, 40, .10), inset 0 0 0 1px rgba(143, 102, 22, .25); }
+:root[data-theme="light"] .seg button.on { box-shadow: 0 1px 2px rgba(16, 24, 40, .12), inset 0 0 0 1px rgba(143, 102, 22, .30); }
 
 /* 开关只在「轨道 + 文字」这块区域可点：inline-flex 收缩到内容宽度，
    否则 label 作为块级 flex 会撑满整行，点行尾空白也会误触 */
