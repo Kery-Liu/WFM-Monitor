@@ -1,6 +1,6 @@
 {
   "name": "wfm-monitor",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "description": "Warframe Market 价格监控与通知桌面应用 / Price watcher & notifier for warframe.market",
   "main": "src/main/main.js",
   "scripts": {
