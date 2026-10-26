@@ -327,8 +327,10 @@ select { cursor: pointer; }
 .seg button:hover { border-color: var(--line-strong); }
 .seg button.on { border-color: var(--gold-dim); background: rgba(224, 179, 84, .1); color: var(--gold); }
 
-.switch { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
-.field > label.switch, .field .switch { display: flex; }
+/* 开关只在「轨道 + 文字」这块区域可点：inline-flex 收缩到内容宽度，
+   否则 label 作为块级 flex 会撑满整行，点行尾空白也会误触 */
+.switch { display: inline-flex; width: max-content; max-width: 100%; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+.field > label.switch, .field .switch { display: inline-flex; }
 .switch input { display: none; }
 .switch .track {
   width: 34px; height: 19px; border-radius: 20px; background: #2a3543; position: relative;
@@ -383,6 +385,7 @@ select { cursor: pointer; }
 .result:hover { background: var(--panel-2); }
 .result.on { background: var(--gold-soft); }
 .result img { width: 26px; height: 26px; object-fit: contain; opacity: .9; }
+.result img.broken { visibility: hidden; }
 .result-main { flex: 1; min-width: 0; }
 .result-main b { font-size: 12.5px; font-weight: 600; display: block; }
 .result-main span { font-size: 10.5px; color: var(--muted); }

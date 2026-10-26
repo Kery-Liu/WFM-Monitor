@@ -2028,6 +2028,12 @@ function drawModal() {
     loadParts();
   });
 
+  // 官方图缺失/加载失败时不要留一个破图标（error 不冒泡，用捕获阶段接）
+  $('#m-results').addEventListener('error', (e) => {
+    const img = e.target;
+    if (img && img.tagName === 'IMG') img.classList.add('broken');
+  }, true);
+
   if (m.selected) bindRuleForm();
   $('#m-save').addEventListener('click', submitModal);
 }
