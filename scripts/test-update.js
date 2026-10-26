@@ -53,6 +53,8 @@ const tmp = (tag) => fs.mkdtempSync(path.join(os.tmpdir(), `wfm-${tag}-`));
   check('缺图物品回落 subIcon', thumbOf('caliban_prime_blueprint') === 'sub_icons/blueprint_128x128.png');
   check('普通物品仍用 thumb', /thumbs\/trick_mag\./.test(thumbOf('trick_mag')));
   check('unknown 图视为无图', thumbOf('axi_s17_relic') === '');
+  const placeholder = path.join(__dirname, '..', 'src', 'web', 'placeholder.svg');
+  check('本地占位图存在', fs.existsSync(placeholder) && fs.statSync(placeholder).size > 100);
 
   // ---------- 4. 改目标价 → 差距立即重算（不等下一轮） ----------
   const orders = [

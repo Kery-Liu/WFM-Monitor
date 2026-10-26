@@ -23,6 +23,9 @@ const S = {
   effectiveTheme: 'dark',
 };
 
+/** 本地占位图：物品官方缺图或图片加载失败时使用，随应用打包，不依赖网络 */
+const PLACEHOLDER_ICON = 'placeholder.svg';
+
 // ---------------- i18n / theme ----------------
 const I18N = window.WFMi18nEngine || null;
 const isEN = () => S.lang === 'en';
@@ -2028,10 +2031,17 @@ function drawModal() {
     loadParts();
   });
 
-  // 官方图缺失/加载失败时不要留一个破图标（error 不冒泡，用捕获阶段接）
+  // 官方图缺失/加载失败时换成随包占位图；占位图也失败才隐藏（error 不冒泡，用捕获阶段接）
   $('#m-results').addEventListener('error', (e) => {
     const img = e.target;
-    if (img && img.tagName === 'IMG') img.classList.add('broken');
+    if (!img || img.tagName !== 'IMG') return;
+    const fb = img.dataset.fallback || PLACEHOLDER_ICON;
+    if (img.dataset.failed !== '1') {
+      img.dataset.failed = '1';
+      img.src = fb;
+      return;
+    }
+    img.classList.add('broken');
   }, true);
 
   if (m.selected) bindRuleForm();
@@ -2056,7 +2066,7 @@ function renderResults() {
       const title = pickName(c.zh, c.en);
       const sub = `${c.en || ''}${c.zh && c.en ? ' · ' : ''}${c.slug || ''}${c.tags ? ` · ${c.tags.slice(0, 3).join('/')}` : ''}${c.rivenType ? ` · ${c.rivenType}` : ''}`;
       return `<div class="result ${on ? 'on' : ''}" data-idx="${i}">
-        ${c.thumb ? `<img src="${esc(c.thumb)}" alt=""/>` : '<div style="width:26px"></div>'}
+        <img src="${esc(c.thumb || PLACEHOLDER_ICON)}" data-fallback="${PLACEHOLDER_ICON}" alt=""/>
         <div class="result-main"><b>${esc(title)}</b><span>${esc(sub)}</span></div>
         <span class="score">${Math.round(c.score || 0)}</span>
       </div>`;

@@ -385,6 +385,7 @@ select { cursor: pointer; }
 .result:hover { background: var(--panel-2); }
 .result.on { background: var(--gold-soft); }
 .result img { width: 26px; height: 26px; object-fit: contain; opacity: .9; }
+.result img[data-failed="1"] { opacity: .45; }
 .result img.broken { visibility: hidden; }
 .result-main { flex: 1; min-width: 0; }
 .result-main b { font-size: 12.5px; font-weight: 600; display: block; }

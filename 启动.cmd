@@ -3,6 +3,15 @@ chcp 65001 >nul
 title WFM 价格监控
 cd /d "%~dp0"
 
+rem 单实例锁：旧版（打包的 WFM-Monitor.exe）如果还在托盘里运行，新实例会被它顶掉，
+rem 表现为「双击启动后还是旧窗口、版本号还是旧的」。这里先关掉旧进程。
+tasklist /FI "IMAGENAME eq WFM-Monitor.exe" 2>nul | find /I "WFM-Monitor.exe" >nul
+if not errorlevel 1 (
+  echo 检测到旧版 WFM-Monitor.exe 正在运行，正在关闭...
+  taskkill /IM WFM-Monitor.exe /F >nul 2>nul
+  timeout /t 2 /nobreak >nul
+)
+
 if not exist "node_modules\electron\dist\electron.exe" (
   echo [1/2] 首次运行，正在安装依赖（约 1-2 分钟）...
   where npm >nul 2>nul
