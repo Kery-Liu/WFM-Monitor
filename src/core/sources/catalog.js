@@ -12,7 +12,16 @@ const { readJsonSafe, writeJsonAtomic } = require('../util');
 
 const ASSET_BASE = 'https://warframe.market/static/assets/';
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
+// 清单结构版本：字段增减时 +1，让老缓存自动后台刷新（不会丢，刷新失败仍可用旧数据）
+const SCHEMA_VERSION = 2;
 const SEED_FILE = path.join(__dirname, '..', '..', '..', 'assets', 'catalog.seed.json');
+
+/** 官方缺图时会给 items/unknown.png / items/unknown.thumb.png，视同没有缩略图 */
+function normalizeThumb(p) {
+  if (!p) return '';
+  if (/items\/unknown(\.thumb)?\.[a-z]+$/i.test(p)) return '';
+  return p;
+}
 
 class Catalog {
   constructor({ client, logger, dataDir }) {
@@ -36,7 +45,10 @@ class Catalog {
   }
 
   get ageMs() {
-    return this.data ? Date.now() - this.data.fetchedAt : Infinity;
+    if (!this.data) return Infinity;
+    // 结构版本不一致：当作已过期，触发一次后台刷新（旧数据继续可用）
+    if (this.data.schema !== SCHEMA_VERSION) return Infinity;
+    return Date.now() - this.data.fetchedAt;
   }
 
   async ensureFresh(force = false) {
@@ -65,7 +77,8 @@ class Catalog {
           en: it.i18n?.en?.name || it.slug,
           zh: it.i18n?.['zh-hans']?.name || '',
           tags: it.tags || [],
-          thumb: it.i18n?.en?.thumb || '',
+          thumb: normalizeThumb(it.i18n?.en?.thumb),
+          subIcon: it.i18n?.en?.subIcon || '',
           setRoot: !!it.setRoot,
           setParts: it.setParts || [],
           maxRank: it.maxRank ?? null,
@@ -96,7 +109,7 @@ class Catalog {
         negativeOnly: !!a.negativeOnly,
       }));
 
-      this.data = { fetchedAt: Date.now(), items, weapons, attrs };
+      this.data = { schema: SCHEMA_VERSION, fetchedAt: Date.now(), items, weapons, attrs };
       writeJsonAtomic(this.file, this.data);
       this.logger.info('catalog', `清单已更新：物品 ${items.length} / 紫卡武器 ${weapons.length} / 词条 ${attrs.length}`);
       this.lastError = null;
@@ -138,6 +151,21 @@ class Catalog {
   iconUrl(relPath) {
     if (!relPath) return '';
     return `${ASSET_BASE}${relPath}`;
+  }
+
+  /**
+   * 搜索结果缩略图选哪张：
+   * - Prime 战甲散件（含主蓝图）优先用 subIcon —— 官方 thumb 对同一套战甲的
+   *   蓝图/机体/头部/系统返回的是同一张全身图，列表里完全分不出来
+   * - 其余物品用 thumb；官方缺图（items/unknown.png）时回落 subIcon
+   */
+  thumbFor(item) {
+    if (!item) return '';
+    const tags = item.tags || [];
+    const isPrimeWarframe = tags.includes('prime') && tags.includes('warframe');
+    const isSet = item.setRoot || tags.includes('set');
+    if (isPrimeWarframe && !isSet && item.subIcon) return item.subIcon;
+    return item.thumb || item.subIcon || '';
   }
 
   snapshotMeta() {

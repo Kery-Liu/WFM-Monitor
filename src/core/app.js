@@ -119,7 +119,7 @@ class App extends EventEmitter {
         zh: c.zh,
         tags: c.tags,
         score: c.score,
-        thumb: this.catalog.iconUrl(c.thumb),
+        thumb: this.catalog.iconUrl(this.catalog.thumbFor(c)),
         setRoot: c.setRoot,
         mr: c.mr,
       })),
