@@ -34,8 +34,6 @@
 |---|---|
 | ![紫卡规则](https://raw.githubusercontent.com/Kery-Liu/WFM-Monitor-assets/main/03-riven-zh.png) | ![网络自检](https://raw.githubusercontent.com/Kery-Liu/WFM-Monitor-assets/main/04-netcheck-zh.png) |
 
-亮白主题：![亮白主题](https://raw.githubusercontent.com/Kery-Liu/WFM-Monitor-assets/main/08-theme-light.png)
-
 > 截图为 v1.1.5 界面。英文界面截图见 [English](./README.en.md)。
 
 ## 安装
