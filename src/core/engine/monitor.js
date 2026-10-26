@@ -81,6 +81,24 @@ class Monitor extends EventEmitter {
     return true;
   }
 
+  /**
+   * 换了一个监控对象（编辑时重新选了物品/武器）：旧订单缓存和旧通知状态全部作废
+   * 否则会拿上一个物品的挂单去算新目标的差价
+   */
+  resetForNewItem() {
+    this.rawCache = [];
+    this.rawCacheAt = 0;
+    this.snapshot = null;
+    this.lastError = null;
+    this.confirmCount = 0;
+    this.lastNotifyAt = 0;
+    this.lastNotifyPrice = null;
+    this.notifiedAuctionIds = new Set();
+    try {
+      this.deps.store.setRuntime(this.id, { lastNotifyAt: 0, lastNotifyPrice: null, notifiedAuctionIds: [] });
+    } catch (_) {}
+  }
+
   async tick() {
     if (this.busy) return;
     const forced = this.forceRun;

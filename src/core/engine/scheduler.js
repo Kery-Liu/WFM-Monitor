@@ -79,27 +79,39 @@ class Scheduler extends EventEmitter {
   updateTarget(target) {
     const m = this.monitors.get(target.id);
     if (!m) return this.addTarget(target);
-    const intervalChanged = m.target.intervalSec !== target.intervalSec;
-    const reEnabled = !m.target.enabled && target.enabled;
-    const nowDisabled = m.target.enabled && !target.enabled;
+    const prev = m.target;
+    const intervalChanged = prev.intervalSec !== target.intervalSec;
+    const reEnabled = !prev.enabled && target.enabled;
+    const nowDisabled = prev.enabled && !target.enabled;
+    // 编辑时可以把监控对象整个换掉：slug / 武器 / 类型变了就不能沿用旧缓存
+    const identityChanged =
+      prev.kind !== target.kind ||
+      (prev.slug || '') !== (target.slug || '') ||
+      (prev.weaponSlug || '') !== (target.weaponSlug || '') ||
+      (!!prev.itemId && !!target.itemId && prev.itemId !== target.itemId);
     m.target = target;
 
-    // 目标价/方向/筛选变了：立刻用本地订单缓存重算，否则卡片和详情页的差距
-    // 会停留在旧规则上，直到下一轮轮询（最长一个 interval）
-    const ruleChanged = m.refreshSnapshot();
-
-    if (nowDisabled) {
-      // 停用 = 立即刹车：清空下次调度，状态标记为 disabled
-      m.state = 'disabled';
-      m.nextRunAt = 0;
-    } else if (reEnabled) {
-      m.state = this.config.get().global.paused ? 'paused' : 'idle';
-      if (!this.config.get().global.paused) m.scheduleIn(300); // 重新启用 → 立刻跑一次
-    } else if (intervalChanged) {
-      m.scheduleIn(500);
-    } else if (ruleChanged && m.target.enabled && m.state !== 'checking' && m.state !== 'error') {
-      // 快照已按新规则重算，状态跟着达标结果走
-      m.state = m.snapshot?.matched ? 'trigger' : 'ok';
+    if (identityChanged) {
+      m.resetForNewItem();
+      m.state = target.enabled ? 'idle' : 'disabled';
+      if (target.enabled) m.scheduleIn(300); // 换了对象 → 立刻取一次新数据
+    } else {
+      // 目标价/方向/筛选变了：立刻用本地订单缓存重算，否则卡片和详情页的差距
+      // 会停留在旧规则上，直到下一轮轮询（最长一个 interval）
+      const ruleChanged = m.refreshSnapshot();
+      if (nowDisabled) {
+        // 停用 = 立即刹车：清空下次调度，状态标记为 disabled
+        m.state = 'disabled';
+        m.nextRunAt = 0;
+      } else if (reEnabled) {
+        m.state = this.config.get().global.paused ? 'paused' : 'idle';
+        if (!this.config.get().global.paused) m.scheduleIn(300); // 重新启用 → 立刻跑一次
+      } else if (intervalChanged) {
+        m.scheduleIn(500);
+      } else if (ruleChanged && m.target.enabled && m.state !== 'checking' && m.state !== 'error') {
+        // 快照已按新规则重算，状态跟着达标结果走
+        m.state = m.snapshot?.matched ? 'trigger' : 'ok';
+      }
     }
     this.emit('update', m.view());
     return m;

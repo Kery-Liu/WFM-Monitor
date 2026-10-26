@@ -29,6 +29,7 @@
 **修复**：
 - `Monitor.refreshSnapshot()`：规则变更后用本地订单缓存立即重算快照（缓存超过 3 个检查周期则交给下一轮，避免拿陈旧数据误判）。
 - `Scheduler.updateTarget()` 调用它，并同步 `state`（达标→trigger，未达标→ok；停用/异常/检查中不覆盖）。
+- 编辑时如果整个换了监控对象（slug / 武器 / 类型变化），清空旧订单缓存与旧通知状态，并立即重新取数，避免拿上一个物品的挂单算新目标的差价。
 - 重算**不触发通知**：改个价格不应该立刻弹窗。
 - 顺带统一紫卡拍卖的差距口径：未达标时也给出 `targetPrice - bestPrice`，不再只在达标时才有值。
 
@@ -62,7 +63,7 @@
 - 版本号：`package.json` 1.0.0 → **1.0.1**（界面「设置 → 维护」显示的版本随之变化）。
 - 构建产物按版本分目录：绿色版 `dist/WFM-Monitor-v<版本>/`，安装包 `release/v<版本>/WFM-Monitor-Setup-<版本>.exe`，新旧版本不再互相覆盖。
 - 新增 `scripts/build-seed.js`（`npm run seed`）用于重建物品清单快照。
-- 新增 `scripts/test-update.js`（`npm run test:update`）覆盖本次 4 项修复的回归断言（22 项）。
+- 新增 `scripts/test-update.js`（`npm run test:update`）覆盖本次 4 项修复的回归断言（25 项）。
 
 ### 升级说明
 

@@ -114,6 +114,13 @@ const tmp = (tag) => fs.mkdtempSync(path.join(os.tmpdir(), `wfm-${tag}-`));
   scheduler.updateTarget({ ...target, enabled: false, targetPrice: 130 });
   check('停用后状态仍为 disabled', scheduler.getMonitor('t1').state === 'disabled');
 
+  // ---------- 4b. 换监控对象（slug 变了）不能沿用旧缓存 ----------
+  scheduler.updateTarget({ ...target, enabled: true, slug: 'ash_prime_set' });
+  const mv = scheduler.getMonitor('t1');
+  check('换物品后旧快照已清空', mv.snapshot === null);
+  check('换物品后旧缓存已清空', mv.rawCache.length === 0);
+  check('换物品后立即安排取数', mv.state === 'idle' && mv.nextRunAt > 0, `state=${mv.state} nextRunAt=${mv.nextRunAt}`);
+
   // ---------- 5. 拍卖差距：未达标也要有值 ----------
   const snap = snapshotAuction(
     [{ id: 'a1', buyout_price: 500, visible: true, closed: false, owner: { ingame_name: 'C', status: 'ingame' }, item: { weapon_url_name: 'kuva_ayanga', attributes: [] } }],
