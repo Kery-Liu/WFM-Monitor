@@ -21,7 +21,8 @@ const { spawnSync } = require('child_process');
 const root = path.join(__dirname, '..');
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 const BUILDER = path.join(root, 'node_modules', 'electron-builder', 'cli.js');
-const OUT_DIR = path.join(root, 'release');
+// 版本隔离：安装包与解包目录都落在 release/v<版本>/，不同版本互不覆盖
+const OUT_DIR = path.join(root, 'release', `v${pkg.version}`);
 // 每次构建用全新的暂存目录，避免「清理旧产物」触发受限环境的批量删除拦截
 const STAGE_DIR = path.join(os.tmpdir(), `wfm-stage-${Date.now()}`);
 const UNPACKED = path.join(STAGE_DIR, 'win-unpacked');
@@ -127,10 +128,11 @@ step('5/6 生成 NSIS 安装包');
 run(process.execPath, [
   BUILDER, '--win', 'nsis',
   '--prepackaged', UNPACKED,
+  `--config.directories.output=${OUT_DIR}`,
   '--config.win.signAndEditExecutable=false',
 ]);
 
 step('6/6 产物验收');
 run(process.execPath, [path.join('scripts', 'verify-build.js'), UNPACKED]);
 
-console.log(`\n完成：release/WFM-Monitor-Setup-${pkg.version}.exe`);
+console.log(`\n完成：release/v${pkg.version}/WFM-Monitor-Setup-${pkg.version}.exe`);

@@ -1,0 +1,52 @@
+# 版本目录与回溯说明
+
+本项目同时存在「源码版本」和「构建产物」两类东西，按下面的规则分开存放，避免新旧版本混在一个文件夹里。
+
+## 1. 源码版本：git tag
+
+| 版本 | git 标签 | 说明 |
+|---|---|---|
+| 1.0.0 | `v1.0.0` | 首个正式版本（初始提交） |
+| 1.0.1 | `v1.0.1` | 修复 Prime 部件图标 / 改价差距不刷新 / 默认快捷键 / 开关点击范围 |
+
+常用回溯命令（在项目根目录执行）：
+
+```bash
+git tag                     # 列出所有版本
+git log --oneline --decorate  # 看每个提交在哪个版本
+git diff v1.0.0 v1.0.1 --stat # 看两个版本改了哪些文件
+git checkout v1.0.0         # 临时回到 1.0.0（只读排查用，改完记得切回 master）
+git switch master           # 回到最新开发线
+```
+
+## 2. 源码快照：`versions/` 目录
+
+`versions/` 下按版本号分文件夹，存放从对应 tag 导出的**只读源码快照**：
+
+```
+versions/
+  v1.0.0/    ← 1.0.0 的源码（对应 git tag v1.0.0）
+  v1.0.1/    ← 1.0.1 的源码（对应 git tag v1.0.1）
+```
+
+- 开发、提交一律在**项目根目录**，不要在 `versions/` 里改；这里只是留档，方便直接打开旧版本对比代码。
+- 快照不含 `node_modules`、`dist`、`release`、`data`，也不含运行数据。
+- 该目录被 `.gitignore` 忽略，不会让仓库体积翻倍；需要重建时：
+
+```bash
+git archive v1.0.1 | tar -x -C versions/v1.0.1
+```
+
+## 3. 构建产物：按版本分目录
+
+| 类型 | 路径 | 生成命令 |
+|---|---|---|
+| 绿色版 | `dist/WFM-Monitor-v<版本>/` | `npm run pack` |
+| 安装包 | `release/v<版本>/WFM-Monitor-Setup-<版本>.exe` | `npm run dist` |
+| 旧版安装包（1.0.0） | `release/WFM-Monitor-Setup-1.0.0.exe` | 历史产物，保留不动 |
+
+以后每出一个版本，产物落在自己的 `v<版本>` 文件夹里，不会覆盖上一个版本。
+
+## 4. 每个版本改了什么
+
+见 [CHANGELOG.md](./CHANGELOG.md)。

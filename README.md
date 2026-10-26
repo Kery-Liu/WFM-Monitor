@@ -38,7 +38,7 @@
 
 ### 方式一：安装包（推荐）
 
-1. 下载 `WFM-Monitor-Setup-1.0.0.exe`（Releases 页面）。
+1. 下载最新安装包 `WFM-Monitor-Setup-1.0.1.exe`（Releases 页面）。
 2. 双击运行，按提示选择安装目录（默认 `%LOCALAPPDATA%\Programs\WFM-Monitor`），**不需要管理员权限**。
 3. 装完自动启动，桌面与开始菜单会生成「WFM 价格监控」快捷方式。
 4. 首次启动会在后台拉取物品库（约 10–30 秒），之后即可搜索添加监控。
@@ -169,14 +169,20 @@ Windows「设置 → 应用」里卸载「WFM 价格监控」。卸载**不会**
 |---|---|
 | `npm start` / `npm run web` | 桌面模式 / 无 GUI 模式 |
 | `npm run test:realtime` 等 `test:*` | 实时流、冷却、停用、错误分类、通知、远程控制回归 |
+| `npm run test:update` | v1.0.1 回归：改价即时刷新 / 默认快捷键 / Prime 部件图标 / 配置迁移 |
 | `npm run audit` | 物品库体检 |
-| `npm run pack` | 免 electron-builder 的绿色版目录（`dist/WFM-Monitor`） |
-| `npm run dist` | 构建 NSIS 安装包到 `release/`，先跑出厂商 |
+| `npm run seed` | 重建随包物品清单快照 `assets/catalog.seed.json` |
+| `npm run pack` | 免 electron-builder 的绿色版目录（`dist/WFM-Monitor-v<版本>`） |
+| `npm run dist` | 构建 NSIS 安装包到 `release/v<版本>/`，先跑出厂商检查 |
 | `npm run verify:build` | 验收产物：无个人数据、关键文件齐全 |
 
 打包前的 `scripts/preflight-clean.js` 会强制检查：待打包目录无运行态文件、白名单不含 `data/` 等目录、源码无 Webhook key / 邮箱 / 密码残留，任何一项不通过就中断打包。
 
-`npm run dist` 实际执行 `scripts/build-installer.js`：复用本地 Electron 并裁剪语言包 → 构建目录版 → 用 rcedit 写入图标与版本信息 → 生成 NSIS 安装包 → 跑 `verify-build.js` 验收。产物为 `release/WFM-Monitor-Setup-<版本>.exe`（约 73 MB，含完整运行时，无需用户另装 Node）。因此也不需要下载 winCodeSign，无管理员权限的 Windows 上同样能打包。
+`npm run dist` 实际执行 `scripts/build-installer.js`：复用本地 Electron 并裁剪语言包 → 构建目录版 → 用 rcedit 写入图标与版本信息 → 生成 NSIS 安装包 → 跑 `verify-build.js` 验收。产物为 `release/v<版本>/WFM-Monitor-Setup-<版本>.exe`（约 73 MB，含完整运行时，无需用户另装 Node）。因此也不需要下载 winCodeSign，无管理员权限的 Windows 上同样能打包。构建产物按版本分目录，新旧版本不会互相覆盖。
+
+### 版本记录
+
+每个版本的修复内容、根因与验证方式见 [CHANGELOG.md](./CHANGELOG.md)，源码快照与产物目录的对照见 [VERSIONS.md](./VERSIONS.md)。源码版本用 git tag 标记（`v1.0.0`、`v1.0.1`），构建产物按 `dist/WFM-Monitor-v<版本>/`、`release/v<版本>/` 分目录存放。
 
 ### 扩展点
 

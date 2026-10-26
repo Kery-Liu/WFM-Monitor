@@ -10,8 +10,10 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.join(__dirname, '..');
+const pkgVersion = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
 const distRoot = path.join(root, 'dist');
-const outDir = path.join(distRoot, 'WFM-Monitor');
+// 每个版本一个独立目录，避免新版覆盖旧版后分不清哪个是可用的
+const outDir = path.join(distRoot, `WFM-Monitor-v${pkgVersion}`);
 const electronDist = path.join(root, 'node_modules', 'electron', 'dist');
 const appDir = path.join(outDir, 'resources', 'app');
 

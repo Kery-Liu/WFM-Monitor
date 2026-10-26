@@ -40,7 +40,7 @@
 
 ### Option 1: Installer (recommended)
 
-1. Download `WFM-Monitor-Setup-1.0.0.exe` from the Releases page.
+1. Download the latest installer `WFM-Monitor-Setup-1.0.1.exe` from the Releases page.
 2. Run it and pick an install folder (default `%LOCALAPPDATA%\Programs\WFM-Monitor`). **No administrator rights needed.**
 3. The app starts automatically; desktop and Start Menu shortcuts are created.
 4. On first launch it downloads the item catalog in the background (about 10–30 seconds), then you can search and add targets.
@@ -169,14 +169,20 @@ Dependency direction is fixed: `http → sources → domain → engine → notif
 |---|---|
 | `npm start` / `npm run web` | Desktop mode / headless mode |
 | `npm run test:realtime` and other `test:*` | Regressions for stream, cooldown, disabling, errors, notifications, remote control |
+| `npm run test:update` | v1.0.1 regressions: instant gap refresh, default hotkey, prime part icons, config migration |
 | `npm run audit` | Catalog health check |
-| `npm run pack` | builder-free portable folder (`dist/WFM-Monitor`) |
-| `npm run dist` | Build the NSIS installer into `release/`, with a factory-state check first |
+| `npm run seed` | Rebuild the bundled catalog snapshot (`assets/catalog.seed.json`) |
+| `npm run pack` | builder-free portable folder (`dist/WFM-Monitor-v<version>`) |
+| `npm run dist` | Build the NSIS installer into `release/v<version>/`, with a factory-state check first |
 | `npm run verify:build` | Verify the output: no personal data, all key files present |
 
 Before packaging, `scripts/preflight-clean.js` hard-fails if runtime files appear in the packaged folders, if the file whitelist includes `data/`-style directories, or if webhook keys / email addresses / passwords are found in the source.
 
-`npm run dist` runs `scripts/build-installer.js`: it reuses the local Electron with trimmed locales, builds the unpacked app, brands the exe with rcedit, generates the NSIS installer, then verifies the output with `verify-build.js`. The result is `release/WFM-Monitor-Setup-<version>.exe` (about 73 MB, runtime included — users need no Node.js). No winCodeSign download is required, so packaging also works on Windows machines without administrator rights.
+`npm run dist` runs `scripts/build-installer.js`: it reuses the local Electron with trimmed locales, builds the unpacked app, brands the exe with rcedit, generates the NSIS installer, then verifies the output with `verify-build.js`. The result is `release/v<version>/WFM-Monitor-Setup-<version>.exe` (about 73 MB, runtime included — users need no Node.js). No winCodeSign download is required, so packaging also works on Windows machines without administrator rights. Build outputs are versioned per folder, so releases never overwrite each other.
+
+### Changelog
+
+Fixes, root causes and verification for each release live in [CHANGELOG.md](./CHANGELOG.md). Source versions are tagged in git (`v1.0.0`, `v1.0.1`); build outputs go to `dist/WFM-Monitor-v<version>/` and `release/v<version>/`.
 
 ### Extension points
 

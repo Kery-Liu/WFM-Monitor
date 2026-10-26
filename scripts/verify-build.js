@@ -9,9 +9,12 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.join(__dirname, '..');
-// 用法：node verify-build.js [unpackedDir]，缺省为 release/win-unpacked
+const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+// 用法：node verify-build.js [unpackedDir]，缺省为 release/v<版本>/win-unpacked
 const unpackedArg = process.argv[2];
-const unpackedDir = unpackedArg || path.join(root, 'release', 'win-unpacked');
+const versioned = path.join(root, 'release', `v${pkg.version}`, 'win-unpacked');
+const legacy = path.join(root, 'release', 'win-unpacked');
+const unpackedDir = unpackedArg || (fs.existsSync(versioned) ? versioned : legacy);
 const appDir = path.join(unpackedDir, 'resources', 'app');
 
 const FORBIDDEN = ['settings.json', 'targets.json', 'history.json', 'runtime.json', 'events.ndjson', 'catalog.json'];
@@ -67,9 +70,8 @@ console.log(`  目录：${path.relative(root, appDir)}`);
 console.log(`  文件：${fileCount} 个，解包后 ${(bytes / 1024 / 1024).toFixed(1)} MB`);
 console.log('  未发现 settings.json / targets.json / history.json / runtime.json / events.ndjson / catalog.json');
 
-const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-const installer = path.join(root, 'release', `WFM-Monitor-Setup-${pkg.version}.exe`);
+const installer = path.join(root, 'release', `v${pkg.version}`, `WFM-Monitor-Setup-${pkg.version}.exe`);
 if (fs.existsSync(installer)) {
   const mb = (fs.statSync(installer).size / 1024 / 1024).toFixed(1);
-  console.log(`  安装包：release/WFM-Monitor-Setup-${pkg.version}.exe（${mb} MB）`);
+  console.log(`  安装包：release/v${pkg.version}/WFM-Monitor-Setup-${pkg.version}.exe（${mb} MB）`);
 }

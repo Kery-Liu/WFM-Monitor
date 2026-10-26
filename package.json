@@ -1,6 +1,6 @@
 {
   "name": "wfm-monitor",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Warframe Market 价格监控与通知桌面应用 / Price watcher & notifier for warframe.market",
   "main": "src/main/main.js",
   "scripts": {
@@ -11,13 +11,15 @@
     "dist:dir": "node scripts/preflight-clean.js && electron-builder --win dir",
     "verify:build": "node scripts/verify-build.js",
     "audit": "node scripts/audit-catalog.js",
+    "seed": "node scripts/build-seed.js",
     "test:realtime": "node scripts/test-realtime.js",
     "test:cooldown": "node scripts/test-cooldown.js",
     "test:disable": "node scripts/test-disable.js",
     "test:errors": "node scripts/test-errors.js",
     "test:notify": "node scripts/test-notify.js",
     "test:i18n": "node scripts/e2e-i18n.js",
-    "test:control": "node scripts/test-control.js"
+    "test:control": "node scripts/test-control.js",
+    "test:update": "node scripts/test-update.js"
   },
   "author": "Kery",
   "license": "MIT",
