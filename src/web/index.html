@@ -8,6 +8,13 @@
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+<!-- 液态玻璃边缘折射：给 1px 亮边叠一点位移噪声，避免边缘像刀切一样死板 -->
+<svg class="svg-defs" aria-hidden="true" focusable="false">
+  <filter id="liquidEdge" x="-15%" y="-15%" width="130%" height="130%" color-interpolation-filters="sRGB">
+    <feTurbulence type="fractalNoise" baseFrequency="0.009 0.014" numOctaves="2" seed="7" result="noise"/>
+    <feDisplacementMap in="SourceGraphic" in2="noise" scale="6" xChannelSelector="R" yChannelSelector="G"/>
+  </filter>
+</svg>
 <div class="app">
   <aside class="sidebar">
     <div class="brand">
@@ -19,7 +26,7 @@
     </div>
 
     <div class="side-actions">
-      <button id="btn-add" class="btn primary block">＋ 新建监控</button>
+      <button id="btn-add" class="btn primary block magnetic">＋ 新建监控</button>
       <div class="row gap8">
         <button id="btn-check-all" class="btn ghost flex1">全部检查</button>
         <button id="btn-pause" class="btn ghost flex1">全部暂停</button>

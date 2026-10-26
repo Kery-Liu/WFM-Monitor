@@ -376,6 +376,226 @@ function askDialog({ title, message, buttons = [] }) {
   });
 }
 
+// ---------------- 字段说明气泡 ----------------
+/**
+ * 设置页/新建窗口里的灰色小字统一改成标题右侧的「!」：文字仍留在 DOM（动态文案照旧更新），
+ * 只是隐藏起来，悬停时由气泡读取。气泡从图标底部中央「长」出来，不参与布局。
+ */
+const Tip = (() => {
+  let box = null;
+  let showTimer = 0;
+  let hideTimer = 0;
+  let current = null;
+
+  function node() {
+    if (box && box.isConnected) return box;
+    box = document.createElement('div');
+    box.className = 'tip';
+    box.setAttribute('role', 'tooltip');
+    document.body.appendChild(box);
+    return box;
+  }
+
+  /** 把说明节点的文字取出来：多段（div 子节点）按换行拼，单段折叠空白 */
+  function textOf(src) {
+    const blocks = Array.from(src.childNodes).filter((n) => n.nodeType === 1 || (n.nodeType === 3 && n.nodeValue.trim()));
+    if (blocks.length > 1) return blocks.map((n) => n.textContent.trim()).filter(Boolean).join('\n');
+    return src.textContent.replace(/\s+/g, ' ').trim();
+  }
+
+  function contentOf(icon) {
+    return (icon.__tipSrcs || []).map(textOf).filter(Boolean).join('\n\n');
+  }
+
+  function place(icon) {
+    const el = node();
+    const r = icon.getBoundingClientRect();
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    const gap = 10;
+    let left = r.left + r.width / 2 - w / 2;
+    left = Math.max(8, Math.min(window.innerWidth - w - 8, left));
+    let top = r.top - h - gap;
+    const flip = top < 8;
+    if (flip) top = r.bottom + gap - 4;
+    el.classList.toggle('flip', flip);
+    el.style.left = `${Math.round(left)}px`;
+    el.style.top = `${Math.round(top)}px`;
+  }
+
+  function show(icon) {
+    window.clearTimeout(hideTimer);
+    hideTimer = 0;
+    if (current && current !== icon) hideNow();
+    const text = contentOf(icon);
+    if (!text) return;
+    window.clearTimeout(showTimer);
+    showTimer = window.setTimeout(() => {
+      const el = node();
+      el.textContent = text;
+      el.classList.remove('show');
+      el.style.visibility = 'hidden';
+      place(icon); // 先量出宽高再定位
+      el.style.visibility = '';
+      // 强制回流一次，保证从收起状态开始播入场动画
+      void el.offsetWidth;
+      el.classList.add('show');
+      icon.classList.add('on');
+      current = icon;
+    }, 100);
+  }
+
+  function hide(icon) {
+    window.clearTimeout(showTimer);
+    showTimer = 0;
+    if (current !== icon) return;
+    window.clearTimeout(hideTimer);
+    hideTimer = window.setTimeout(() => {
+      if (box) box.classList.remove('show');
+      icon.classList.remove('on');
+      current = null;
+    }, 150);
+  }
+
+  function hideNow() {
+    window.clearTimeout(showTimer);
+    window.clearTimeout(hideTimer);
+    showTimer = 0;
+    hideTimer = 0;
+    if (box) box.classList.remove('show');
+    if (current) current.classList.remove('on');
+    current = null;
+  }
+
+  return { show, hide, hideNow };
+})();
+
+/** 不转成气泡的说明：版本号、快捷键状态是「状态」不是「解释」 */
+const TIP_SKIP = new Set(['s-version', 's-hotkey-hint']);
+
+function addInfoIcon(anchor, src) {
+  let icon = anchor.querySelector(':scope > .info');
+  if (!icon) {
+    icon = document.createElement('button');
+    icon.type = 'button';
+    icon.className = 'info';
+    icon.textContent = '!';
+    icon.setAttribute('aria-label', '说明');
+    icon.__tipSrcs = [];
+    icon.addEventListener('mouseenter', () => Tip.show(icon));
+    icon.addEventListener('mouseleave', () => Tip.hide(icon));
+    icon.addEventListener('focus', () => Tip.show(icon));
+    icon.addEventListener('blur', () => Tip.hide(icon));
+    anchor.appendChild(icon);
+  }
+  if (!icon.__tipSrcs.includes(src)) icon.__tipSrcs.push(src);
+}
+
+function decorateHints(root) {
+  if (!root) return;
+  root.querySelectorAll('.hint').forEach((hint) => {
+    if (hint.dataset.tipBound || (hint.id && TIP_SKIP.has(hint.id))) return;
+    let anchor = null;
+    const field = hint.closest('.field');
+    if (field) anchor = field.querySelector(':scope > label:not(.switch)');
+    if (!anchor) {
+      // 没有归属输入框的说明：挂到最近的小节标题，再退到面板标题
+      let sib = hint.previousElementSibling;
+      while (sib && !sib.classList.contains('section-title')) sib = sib.previousElementSibling;
+      anchor = sib;
+      if (!anchor) {
+        const panel = hint.closest('.panel');
+        anchor = panel ? panel.querySelector('.panel-head > span:first-child') : null;
+      }
+    }
+    if (!anchor) return;
+    hint.dataset.tipBound = '1';
+    addInfoIcon(anchor, hint);
+  });
+}
+
+let hintQueued = false;
+function initHints() {
+  const roots = [$('#pane-settings'), $('#modal-root')].filter(Boolean);
+  if (!roots.length) return;
+  roots.forEach(decorateHints);
+  // 装饰是幂等的（每个 hint 只绑一次），直接同步跑，避免 rAF 被节流时图标迟到
+  const mo = new MutationObserver(() => roots.forEach(decorateHints));
+  roots.forEach((r) => mo.observe(r, { childList: true, subtree: true }));
+  // 滚动时气泡位置会失效，直接收掉
+  document.addEventListener('scroll', () => Tip.hideNow(), true);
+  window.addEventListener('resize', () => Tip.hideNow());
+}
+
+// ---------------- 磁吸按钮 ----------------
+/** 磁吸：按「鼠标到按钮矩形边缘」的距离判定，靠近边缘（60px 内）就开始轻微靠近，
+ *  越贴边越强；偏移 = 中心方向 × 0.04 × 衰减，单轴最多 3px，lerp 0.12 追过去。
+ *  只挂主按钮（新建监控）——多个按钮同时响应会让触发范围重叠，反而更乱。 */
+const MAG = { radius: 60, pull: 0.04, max: 3, lerp: 0.12 };
+let magItems = [];
+let magRaf = 0;
+const magMouse = { x: -9999, y: -9999 };
+
+function updateMagTargets() {
+  for (const it of magItems) {
+    const r = it.el.getBoundingClientRect();
+    // 减掉当前位移，还原出未吸附时的矩形，避免按钮追着自己跑
+    const left = r.left - it.x;
+    const top = r.top - it.y;
+    const cx = left + r.width / 2;
+    const cy = top + r.height / 2;
+    // 鼠标到矩形的最短距离：在按钮内为 0，只按「离边缘多远」触发
+    const nx = Math.max(left, Math.min(magMouse.x, left + r.width));
+    const ny = Math.max(top, Math.min(magMouse.y, top + r.height));
+    const edge = Math.hypot(magMouse.x - nx, magMouse.y - ny);
+    if (edge > MAG.radius) {
+      it.tx = 0;
+      it.ty = 0;
+      continue;
+    }
+    const falloff = 1 - edge / MAG.radius; // 贴边最强，60px 外归零
+    const dx = magMouse.x - cx;
+    const dy = magMouse.y - cy;
+    it.tx = Math.max(-MAG.max, Math.min(MAG.max, dx * MAG.pull * falloff));
+    it.ty = Math.max(-MAG.max, Math.min(MAG.max, dy * MAG.pull * falloff));
+  }
+}
+
+function magTick() {
+  magRaf = 0;
+  let moving = false;
+  for (const it of magItems) {
+    it.x += (it.tx - it.x) * MAG.lerp;
+    it.y += (it.ty - it.y) * MAG.lerp;
+    if (Math.abs(it.tx - it.x) < 0.15 && Math.abs(it.ty - it.y) < 0.15) {
+      it.x = it.tx;
+      it.y = it.ty;
+    } else {
+      moving = true;
+    }
+    it.el.style.setProperty('--mx', `${it.x.toFixed(2)}px`);
+    it.el.style.setProperty('--my', `${it.y.toFixed(2)}px`);
+  }
+  if (moving) magRaf = requestAnimationFrame(magTick);
+}
+
+function initMagnetic() {
+  magItems = $$('.btn.magnetic').map((el) => ({ el, x: 0, y: 0, tx: 0, ty: 0 }));
+  if (!magItems.length) return;
+  window.addEventListener('mousemove', (e) => {
+    magMouse.x = e.clientX;
+    magMouse.y = e.clientY;
+    updateMagTargets();
+    if (!magRaf) magRaf = requestAnimationFrame(magTick);
+  }, { passive: true });
+  window.addEventListener('mouseleave', () => {
+    magMouse.x = -9999;
+    magMouse.y = -9999;
+    updateMagTargets();
+    if (!magRaf) magRaf = requestAnimationFrame(magTick);
+  });
+}
+
 // ---------------- boot ----------------
 async function boot() {
   bindGlobal();
@@ -410,6 +630,8 @@ async function boot() {
 }
 
 function bindGlobal() {
+  initHints();
+  initMagnetic();
   $('#tabs').addEventListener('click', async (e) => {
     const btn = e.target.closest('.tab');
     if (!btn) return;
@@ -1163,12 +1385,14 @@ function renderSettings() {
           </div>
           <div class="field">
             <label>快捷键开关</label>
-            <label class="switch" style="margin-top:var(--s-2)">
-              <input type="checkbox" id="s-hotkey-on" ${cfg.ui?.hotkey?.enabled ? 'checked' : ''}/>
-              <span class="track"></span>
-              <span class="switch-label">启用全局快捷键</span>
-            </label>
-            <div class="hint" id="s-hotkey-hint">${esc(S.hotkeyHint || '保存后生效，若与其他软件冲突会提示')}</div>
+            <div class="row gap8" style="margin-top:var(--s-2)">
+              <label class="switch">
+                <input type="checkbox" id="s-hotkey-on" ${cfg.ui?.hotkey?.enabled ? 'checked' : ''}/>
+                <span class="track"></span>
+                <span class="switch-label">启用全局快捷键</span>
+              </label>
+              <span class="state" id="s-hotkey-hint">${esc(S.hotkeyHint || '保存后生效，若与其他软件冲突会提示')}</span>
+            </div>
           </div>
         </div>
       </div>

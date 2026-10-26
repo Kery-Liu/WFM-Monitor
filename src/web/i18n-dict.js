@@ -11,6 +11,7 @@
   const DICT = {
     // ---- 通用 ----
     保存: 'Save',
+    说明: 'Details',
     取消: 'Cancel',
     关闭: 'Close',
     删除: 'Delete',
