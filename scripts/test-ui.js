@@ -62,9 +62,10 @@ const SCRIPT = String.raw`(async () => {
   const m = S.modal;
   const segBtn = document.querySelectorAll('#m-kind button')[1];
   segBtn.click();
+  await wait(180);
   ck('分段控件点击切换', document.querySelectorAll('#m-kind button')[1].classList.contains('on') && S.modal.kind === 'auction');
-  await wait(60);
   document.querySelectorAll('#m-kind button')[0].click();
+  await wait(520);
   ck('分段控件可切回', document.querySelectorAll('#m-kind button')[0].classList.contains('on') && S.modal.kind === 'market');
 
   // ---- 窗口控件 ----
@@ -75,6 +76,44 @@ const SCRIPT = String.raw`(async () => {
   document.getElementById('m-min').click();
   ck('窗口最小化', document.getElementById('m-box').classList.contains('collapsed'));
   document.getElementById('m-min').click();
+  // ---- 市场/拍卖切换：滑动块 + 内容替换 + 高度过渡 ----
+  const seg = document.getElementById('m-kind');
+  const ink = seg.querySelector('.seg-ink');
+  ck('分段控件有滑动块', !!ink, ink ? ink.style.width : 'none');
+  const clickKind = async (kind, ms) => {
+    seg.querySelector('[data-kind="' + kind + '"]').click();
+    await wait(ms || 520);
+  };
+  const boxEl = document.getElementById('m-box');
+  await clickKind('market');
+  const hEmptyMarket = boxEl.offsetHeight;
+  const inkMarket = seg.querySelector('.seg-ink').getBoundingClientRect();
+  await clickKind('auction');
+  const hEmptyAuction = boxEl.offsetHeight;
+  const inkAuction = seg.querySelector('.seg-ink').getBoundingClientRect();
+  ck('默认状态切换不改高度', Math.abs(hEmptyAuction - hEmptyMarket) <= 1, hEmptyMarket + ' → ' + hEmptyAuction);
+  ck('切换后选中块位移', Math.abs(inkAuction.left - inkMarket.left) > 100, Math.round(inkMarket.left) + ' → ' + Math.round(inkAuction.left));
+  ck('切换后正文已换', S.modal.kind === 'auction' && document.getElementById('m-search').placeholder.indexOf('杀星') >= 0, document.getElementById('m-search').placeholder.slice(0, 10));
+
+  ck('选中块是滑动过渡', getComputedStyle(seg.querySelector('.seg-ink')).transitionProperty.indexOf('transform') >= 0, getComputedStyle(seg.querySelector('.seg-ink')).transitionProperty);
+  ck('正文是淡入淡出', getComputedStyle(document.getElementById('m-dyn')).transitionProperty.indexOf('opacity') >= 0, getComputedStyle(document.getElementById('m-dyn')).transitionProperty);
+
+  await clickKind('market');
+  S.modal.selected = { slug: 'item_a', id: 'i1', zh: '物品 A', en: 'Item A' };
+  document.getElementById('m-form-wrap').innerHTML = renderRuleForm();
+  bindRuleForm();
+  await wait(220);
+  const hSelected = boxEl.offsetHeight;
+  seg.querySelector('[data-kind="auction"]').click();
+  await wait(60);
+  ck('选中块正在滑动', seg.querySelector('.seg-ink').getAnimations().some((a) => a.transitionProperty && a.transitionProperty.indexOf('transform') >= 0), 'anim');
+  await wait(30);
+  const resizing = boxEl.getAnimations().some((a) => a.transitionProperty === 'height' && a.playState === 'running');
+  await wait(520);
+  const hAfter = boxEl.offsetHeight;
+  ck('选好物品后高度有过渡', resizing && hAfter !== hSelected, hSelected + ' → ' + hAfter + (resizing ? ' (过渡中)' : ' (无过渡)'));
+  ck('切回正文无残留', document.querySelectorAll('#m-dyn').length === 1 && !!document.querySelector('#m-form-wrap'), document.querySelectorAll('#m-dyn').length);
+
   document.getElementById('m-close').click();
   await wait(60);
   ck('窗口关闭', !document.querySelector('#modal-root .win'));
