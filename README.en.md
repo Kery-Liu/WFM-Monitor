@@ -24,6 +24,18 @@
 - Tray resident: closing the window keeps monitoring; a global hotkey can trigger "check all".
 - UI and themes: bilingual Chinese/English interface with dark and light themes; item names and market links follow the language.
 
+## Screenshots
+
+| Target detail: best price, orders, 48h trend | New target: search candidates and set parts |
+|---|---|
+| ![Target detail](https://raw.githubusercontent.com/Kery-Liu/WFM-Monitor-assets/main/05-detail-en.png) | ![New target](https://raw.githubusercontent.com/Kery-Liu/WFM-Monitor-assets/main/06-new-target-en.png) |
+
+| Riven rules: stats, polarity, re-rolls, MR | Light theme |
+|---|---|
+| ![Riven rules](https://raw.githubusercontent.com/Kery-Liu/WFM-Monitor-assets/main/07-riven-en.png) | ![Light theme](https://raw.githubusercontent.com/Kery-Liu/WFM-Monitor-assets/main/08-theme-light.png) |
+
+*Screenshots are from v1.1.5. The app ships in both Chinese and English; the language follows the UI setting.*
+
 ## Install
 
 ### Option 1: Installer (recommended)

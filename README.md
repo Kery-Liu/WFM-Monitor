@@ -24,6 +24,20 @@
 - 常驻托盘：关闭窗口不退出监控；支持全局快捷键触发全部检查。
 - 界面与主题：中英双语、深浅主题可切换，物品名与跳转链接跟随语言。
 
+## 界面预览
+
+| 监控详情：当前最优价、挂单、48h 走势 | 新建监控：搜索候选与套装散件 |
+|---|---|
+| ![监控详情](https://raw.githubusercontent.com/Kery-Liu/WFM-Monitor-assets/main/01-detail-zh.png) | ![新建监控](https://raw.githubusercontent.com/Kery-Liu/WFM-Monitor-assets/main/02-new-target-zh.png) |
+
+| 紫卡规则：词条、极性、洗练、段位 | 网络自检：逐层定位断点 |
+|---|---|
+| ![紫卡规则](https://raw.githubusercontent.com/Kery-Liu/WFM-Monitor-assets/main/03-riven-zh.png) | ![网络自检](https://raw.githubusercontent.com/Kery-Liu/WFM-Monitor-assets/main/04-netcheck-zh.png) |
+
+亮白主题：![亮白主题](https://raw.githubusercontent.com/Kery-Liu/WFM-Monitor-assets/main/08-theme-light.png)
+
+> 截图为 v1.1.5 界面。英文界面截图见 [English](./README.en.md)。
+
 ## 安装
 
 ### 方式一：安装包（推荐）
