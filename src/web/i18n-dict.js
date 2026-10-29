@@ -235,6 +235,7 @@
     '刷新物品库': 'Refresh catalog',
     '打开 warframe.market': 'Open warframe.market',
     '恢复默认设置': 'Restore defaults',
+    '前往更新': 'Go to update',
     '「恢复默认设置」会把上面所有项（包括 Webhook 地址与邮箱账号密码）重置为初始值，请谨慎使用。':
       '"Restore defaults" resets everything above, including the webhook URL and email credentials.',
     '设置有改动，尚未保存': 'You have unsaved changes',

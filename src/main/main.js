@@ -299,6 +299,7 @@ function registerIpc() {
     'app:hotkey-test': () => { broadcast('hotkey-fired', { accelerator: hotkeyState.accelerator || 'manual' }); return hotkeyState; },
     'app:copy-text': (_e, text) => { clipboard.writeText(String(text == null ? '' : text)); return true; },
     'app:version': () => ({ app: app.getVersion(), electron: process.versions.electron, chrome: process.versions.chrome, node: process.versions.node }),
+    'app:check-update': (_e, opts) => core.checkUpdate({ force: !!(opts && opts.force) }),
     'app:log': (_e, n) => core.logger.tail(n || 200),
 
     'targets:list': () => core.targets(),

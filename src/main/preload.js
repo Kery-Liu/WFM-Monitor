@@ -45,6 +45,7 @@ const fullApi = {
   controlPoll: () => invoke('control:poll'),
   hotkeyTest: () => invoke('app:hotkey-test'),
   version: () => invoke('app:version'),
+  checkUpdate: (opts) => invoke('app:check-update', opts),
   log: (n) => invoke('app:log', n),
 
   targets: () => invoke('targets:list'),

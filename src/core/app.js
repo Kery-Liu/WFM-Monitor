@@ -21,6 +21,8 @@ const { OrderStream, WS_URL } = require('./sources/stream');
 const { Resolver } = require('./domain/resolver');
 const { summarize90, recommendBand } = require('./domain/stats');
 const { buildCompare, summarize } = require('./domain/parts');
+const updateCheck = require('./update');
+const pkg = require('../../package.json');
 const { Scheduler } = require('./engine/scheduler');
 const { Notifier } = require('./notify');
 const { EmailControl } = require('./control');
@@ -76,6 +78,9 @@ class App extends EventEmitter {
     if (this.control) this.control.start();
     this.stream.start();
     this.startedAt = Date.now();
+
+    // 启动时静默检查一次更新：不阻塞窗口显示，失败也不弹窗
+    this.checkUpdate().catch(() => {});
 
     // 后台预热清单（不阻塞启动）
     this.catalog.ensureFresh().catch((e) => this.logger.warn('app', `清单预热失败：${e.message}`));
@@ -493,6 +498,31 @@ class App extends EventEmitter {
     if (this._partsCache) this._partsCache.clear();
     if (this._detailCache) this._detailCache.clear();
     return this.catalog.snapshotMeta();
+  }
+
+  /**
+   * 检查更新：Gitee 主源 → GitHub 备源。
+   * 10 分钟内复用结果，避免用户反复点设置页把两个站都薅一遍。
+   * 失败不是错误，是常态（国内连不上 GitHub），所以永远 resolve。
+   */
+  async checkUpdate({ force = false } = {}) {
+    if (!this._updateCache) this._updateCache = { ts: 0, data: null };
+    if (!force && this._updateCache.data && Date.now() - this._updateCache.ts < 10 * 60 * 1000) {
+      return this._updateCache.data;
+    }
+    // 启动时那次和用户进设置页那次可能撞在一起，复用同一个在飞任务
+    if (this._updateJob) return this._updateJob;
+    this._updateJob = (async () => {
+      const data = await updateCheck.check({ current: pkg.version });
+      this._updateCache = { ts: Date.now(), data };
+      this.logger.debug('update', `检查更新：${data.state}${data.latest ? ` → ${data.latest}` : ''}`);
+      return data;
+    })();
+    try {
+      return await this._updateJob;
+    } finally {
+      this._updateJob = null;
+    }
   }
 
   // ---------------- 健康 ----------------

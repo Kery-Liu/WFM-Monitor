@@ -269,8 +269,16 @@ const SCRIPT = String.raw`(async () => {
   ck('侧栏无横向溢出', overflow.length === 0, overflow.slice(0, 4).join(', '));
   ck('页面无横向滚动', document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1, document.documentElement.scrollWidth + '/' + document.documentElement.clientWidth);
 
-  // ---- 自动调度：表单在「优先级分段」与「固定间隔」之间切换 ----
-  S.settings = { ...(S.settings || {}), schedule: { auto: true } };
+  // ---- 维护区的更新入口：没确认新版本之前按钮必须是灰的 ----
+  S.tab = 'settings';
+  renderAll();
+  await wait(700);
+  ck('维护区有更新入口', !!document.getElementById('s-goto-update') && !!document.getElementById('s-update-line'));
+  ck('未确认新版本前「前往更新」不可点', document.getElementById('s-goto-update').disabled === true);
+  ck('更新状态有文案', (document.getElementById('s-update-line').textContent || '').trim().length > 0,
+    document.getElementById('s-update-line').textContent);
+
+  // ---- 自动调度：表单在「优先级分段」与「固定间隔」之间切换 ----  S.settings = { ...(S.settings || {}), schedule: { auto: true } };
   openAddModal();
   await wait(120);
   S.modal.selected = { slug: 'item_a', id: 'i1', zh: '物品 A', en: 'Item A' };

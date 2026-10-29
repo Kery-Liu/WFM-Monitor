@@ -133,6 +133,25 @@ const tmp = (tag) => fs.mkdtempSync(path.join(os.tmpdir(), `wfm-${tag}-`));
   );
   check('拍卖未达标也有差距', snap.delta === -100, `delta=${snap.delta}`);
 
+  // ---------- 6. 更新检查：版本比较 ----------
+  const { compareVersion } = require('../src/core/update');
+  check('1.1.10 高于 1.1.5（按字符串比会错）', compareVersion('1.1.10', '1.1.5') === 1, compareVersion('1.1.10', '1.1.5'));
+  check('v 前缀被忽略', compareVersion('v1.2.0', '1.2.0') === 0);
+  check('1.2 等同 1.2.0', compareVersion('1.2', '1.2.0') === 0);
+  check('低版本返回 -1', compareVersion('1.1.4', '1.1.5') === -1);
+  check('大版本优先于小版本', compareVersion('2.0.0', '1.99.99') === 1);
+  check('相同版本返回 0', compareVersion('1.2.0', '1.2.0') === 0);
+
+  // ---------- 7. 调度默认值与档位推导 ----------
+  const { inferTier, sanitizeTarget } = require('../src/core/domain/rules');
+  check('30 秒以内推为高档', inferTier(15) === 'high' && inferTier(30) === 'high');
+  check('31-120 秒推为中档', inferTier(31) === 'normal' && inferTier(120) === 'normal');
+  check('超过 120 秒推为低档', inferTier(180) === 'low');
+  const st1 = sanitizeTarget({ kind: 'market', slug: 'x', intervalSec: 20 });
+  check('sanitizeTarget 给老目标补 priority', st1.priority === 'high', st1.priority);
+  const st2 = sanitizeTarget({ kind: 'market', slug: 'x', intervalSec: 600, priority: 'high' });
+  check('priority 与 intervalSec 同时保留', st2.priority === 'high' && st2.intervalSec === 600, `${st2.priority}/${st2.intervalSec}`);
+
   console.log(failures === 0 ? '\n✅ 全部通过' : `\n❌ ${failures} 项失败`);
   process.exit(failures ? 1 : 0);
 })().catch((e) => {

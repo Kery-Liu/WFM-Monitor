@@ -1677,6 +1677,10 @@ function renderSettings() {
           <button class="btn ghost" id="s-open-site">打开 warframe.market</button>
           <button class="btn danger" id="s-reset">恢复默认设置</button>
         </div>
+        <div class="row gap8" style="margin-top:var(--s-4);align-items:center;flex-wrap:wrap">
+          <button class="btn ghost" id="s-goto-update" disabled>前往更新</button>
+          <span class="note" id="s-update-line">正在检查更新…</span>
+        </div>
         <div class="hint" style="margin-top:var(--s-4)" id="s-version"></div>
         <div class="hint" style="margin-top:var(--s-2)">「恢复默认设置」会把上面所有项（包括 Webhook 地址与邮箱账号密码）重置为初始值，请谨慎使用。</div>
       </div>
@@ -1815,6 +1819,38 @@ function bindSettingsForm() {
     if (el) el.textContent = `版本 ${v.app}｜Electron ${v.electron}｜Node ${v.node}`;
   });
   refreshBudgetLine();
+  refreshUpdateLine();
+}
+
+/**
+ * 更新检查的五种状态里，四种要显示。
+ * unreachable 不能写成「检查失败」——国内连不上 GitHub 是常态，那样写会让人以为软件坏了。
+ */
+function refreshUpdateLine() {
+  const btn = $('#s-goto-update');
+  const line = $('#s-update-line');
+  if (!btn || !line) return;
+  const en = isEN();
+  line.textContent = en ? 'Checking for updates…' : '正在检查更新…';
+  btn.disabled = true;
+  btn.onclick = null;
+  api.checkUpdate().then((u) => {
+    if (!u) return;
+    if (u.state === 'available') {
+      line.textContent = en ? `Version v${u.latest} is available` : `发现新版本 v${u.latest}`;
+      if (u.url) {
+        btn.disabled = false;
+        btn.onclick = () => api.openExternal(u.url);
+      }
+    } else if (u.state === 'latest') {
+      line.textContent = en ? 'You are on the latest version' : '当前已是最新版本';
+    } else {
+      line.textContent = en ? 'Unable to check for updates right now' : '暂时无法检查更新';
+    }
+  }).catch(() => {
+    line.textContent = isEN() ? 'Unable to check for updates right now' : '暂时无法检查更新';
+    btn.disabled = true;
+  });
 }
 
 /** 预算实时用量：让「为什么变慢了」有一个能查的数字，而不是玄学 */
