@@ -44,6 +44,39 @@ function uiLang() {
   }
 }
 
+/**
+ * 外部链接白名单
+ * 渲染层能调 openExternal，而 URL 有可能来自网络响应（订单归属页、更新检查结果），
+ * 不能无条件透传——否则一个被篡改的响应就能拉起 file:// 或任意站点。
+ * 规则：必须是 https，且 host 命中白名单（允许子域）。
+ */
+const EXTERNAL_HOSTS = [
+  'warframe.market',
+  'github.com',
+  'raw.githubusercontent.com',
+  'gitee.com',
+  'giteeusercontent.com',
+];
+
+function safeExternal(rawUrl) {
+  let u = null;
+  try {
+    u = new URL(String(rawUrl == null ? '' : rawUrl));
+  } catch (_) {
+    return false;
+  }
+  if (u.protocol !== 'https:') return false;
+  const host = u.hostname.toLowerCase();
+  const allowed = EXTERNAL_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
+  if (!allowed) return false;
+  try {
+    shell.openExternal(u.toString());
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 const TT = (zh, en) => (uiLang() === 'en' ? en : zh);
 
 let hotkeyState = { ok: true, registered: false, accelerator: '' };
@@ -180,7 +213,7 @@ function createWindow() {
   });
 
   win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    safeExternal(url);
     return { action: 'deny' };
   });
 
@@ -259,7 +292,7 @@ function registerIpc() {
     'control:poll': () => core.control.pollOnce(),
     'app:test-notify': () => core.testNotify(),
     'app:refresh-catalog': () => core.refreshCatalog(),
-    'app:open-external': (_e, url) => shell.openExternal(url),
+    'app:open-external': (_e, url) => safeExternal(url),
     'app:hotkey-status': () => hotkeyState,
     // 走一遍「主进程 -> 渲染层 -> 全部检查」的完整链路（设置页「测试」按钮用，也可用于排查系统级热键被占用）
     'app:hotkey-test': () => { broadcast('hotkey-fired', { accelerator: hotkeyState.accelerator || 'manual' }); return hotkeyState; },

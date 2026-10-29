@@ -7,6 +7,7 @@
  */
 
 const https = require('https');
+const zlib = require('zlib');
 const { AppError, KINDS, fromNodeError, fromHttpStatus } = require('../errors');
 const { RateLimiter } = require('./rateLimiter');
 const { CircuitBreaker } = require('./breaker');
@@ -114,6 +115,8 @@ class HttpClient {
     const url = new URL(pathWithQuery, BASE);
     const headers = {
       Accept: 'application/json',
+      // 官方接口的订单响应明文 190–630 KB，gzip 后可压到 1/5，是刷新率的主要成本
+      'Accept-Encoding': 'gzip, deflate',
       'Accept-Language': 'en-US,en;q=0.9',
       'User-Agent': g.userAgent || 'WFM-Monitor/1.0',
       Language: g.language || 'zh-hans',
@@ -148,7 +151,22 @@ class HttpClient {
           });
           res.on('end', () => {
             const latencyMs = Date.now() - started;
-            const buf = Buffer.concat(chunks);
+            // bytes 统计的是线上实际传输量（压缩后），带宽预算校准用它；
+            // 解析用解压后的 buf，两者不能混
+            const raw = Buffer.concat(chunks);
+            let buf = raw;
+            const enc = String(res.headers['content-encoding'] || '').toLowerCase();
+            if (enc === 'gzip' || enc === 'deflate') {
+              try {
+                buf = enc === 'gzip' ? zlib.gunzipSync(raw) : zlib.inflateSync(raw);
+              } catch (e) {
+                return reject(new AppError(KINDS.BAD_RESPONSE, '响应解压失败', { status: res.statusCode || 0, detail: e.message }));
+              }
+              // 压缩炸弹兜底：正常订单响应解压后不超过 1 MB
+              if (buf.length > 32 * 1024 * 1024) {
+                return reject(new AppError(KINDS.BAD_RESPONSE, '解压后响应体过大，已中断', { status: res.statusCode || 0 }));
+              }
+            }
             const text = buf.toString('utf8');
             const status = res.statusCode || 0;
             if (status < 200 || status >= 300) {
