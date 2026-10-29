@@ -910,7 +910,8 @@ function renderDetail() {
 
 function chartPlaceholder(v) {
   const cached = v.target.slug ? S.statsCache.get(v.target.slug) : null;
-  if (cached) return bigChart(cached, v.target.targetPrice);
+  // 缓存里存的是 { h48, d90 }，走势图默认画 48 小时那条
+  if (cached) return bigChart(cached.h48 || [], v.target.targetPrice);
   if (!v.target.slug) return '<div class="empty fill"><p>拍卖数据无历史统计</p></div>';
   return '<div class="empty fill"><p>点击右上角「加载走势」获取 48 小时成交价曲线</p></div>';
 }
@@ -1007,9 +1008,9 @@ function bindDetail(v) {
       loadStats.disabled = true;
       loadStats.textContent = '加载中…';
       try {
-        const series = await api.itemStats(slug);
-        S.statsCache.set(slug, series);
-        $('#chart-box', pane).innerHTML = bigChart(series, v.target.targetPrice);
+        const stats = await api.itemStats(slug);
+        S.statsCache.set(slug, stats);
+        $('#chart-box', pane).innerHTML = bigChart(stats.h48 || [], v.target.targetPrice);
         bindChartHover($('#chart-box', pane));
         loadStats.textContent = '刷新走势';
       } catch (e) {

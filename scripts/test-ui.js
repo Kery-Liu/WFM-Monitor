@@ -38,7 +38,7 @@ const SCRIPT = String.raw`(async () => {
       history: [{ p: 18 }, { p: 16 }] },
   ];
   S.selectedId = 't1';
-  S.statsCache.set('item_a', Array.from({ length: 20 }, (_, i) => ({ t: now - (19 - i) * 3600000, median: 60 + (i % 4), volume: 2 + (i % 3) })));
+  S.statsCache.set('item_a', { h48: Array.from({ length: 20 }, (_, i) => ({ t: now - (19 - i) * 3600000, median: 60 + (i % 4), volume: 2 + (i % 3) })), d90: [] });
   S.tab = 'detail';
   renderAll(); applyI18n();
   await wait(120);

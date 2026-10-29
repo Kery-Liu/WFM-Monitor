@@ -14,6 +14,27 @@ const STATUS_GROUPS = {
   all: ['ingame', 'online', 'offline'],
 };
 
+const { quantile } = require('./stats');
+
+/**
+ * 剔除明显离群的挂单价。
+ * 实测 all 口径下存在 1p / 99999p 这类钓鱼单，一条就能把「最低价」从 70p 拉到 1p，
+ * 让监控、推荐价、实际最低价全部失真。按四分位做双侧裁剪，样本不足 4 条时不动。
+ */
+function dropOutliers(list, higherIsBetter) {
+  if (!list || list.length < 4) return list || [];
+  const prices = list.map((o) => Number(o.platinum) || 0).sort((a, b) => a - b);
+  const p25 = quantile(prices, 0.25);
+  const p75 = quantile(prices, 0.75);
+  if (!p25 || !p75) return list;
+  if (higherIsBetter) {
+    const cap = p75 * 3;
+    return list.filter((o) => (Number(o.platinum) || 0) <= cap);
+  }
+  const floor = p25 * 0.3;
+  return list.filter((o) => (Number(o.platinum) || 0) >= floor);
+}
+
 function statusAllowed(filter, status) {
   const allowed = STATUS_GROUPS[filter] || STATUS_GROUPS.all;
   return allowed.includes(status || 'offline');
@@ -29,11 +50,13 @@ function snapshotMarket(orders, target) {
   const type = wantSell ? 'sell' : 'buy';
   const minQty = Math.max(1, Number(target.minQuantity) || 1);
 
-  const eligible = (orders || []).filter((o) => {
-    if (!o) return false;
-    if (o.visible === false) return false;
-    if (o.type !== type) return false;
-    if (orderPrice(o) <= 0) return false;
+  // 同侧挂单先剔掉离群价，再谈筛选。
+  const side = dropOutliers(
+    (orders || []).filter((o) => o && o.visible !== false && o.type === type && orderPrice(o) > 0),
+    !wantSell
+  );
+
+  const eligible = side.filter((o) => {
     if ((Number(o.quantity) || 0) < minQty) return false;
     if (target.rankFilter != null && target.rankFilter !== '' && o.rank != null && Number(o.rank) !== Number(target.rankFilter)) return false;
     if (!statusAllowed(target.buyerFilter, o.user && o.user.status)) return false;
@@ -57,6 +80,17 @@ function snapshotMarket(orders, target) {
     ? []
     : eligible.filter((o) => (wantSell ? orderPrice(o) <= targetPrice : orderPrice(o) >= targetPrice));
 
+  // 全量口径：同样看这一侧，但不套用户的任何筛选（卖家状态 / 最小数量 / 等级）。
+  // 用途是告诉用户「外面还有更便宜的，只是被你自己的条件筛掉了」。
+  // 实测 Mag Prime Set 最便宜的 8 条卖单全是在离线号，所以这里必须带上状态与更新时间，
+  // 否则用户会以为这个价现在就能成交。
+  const allSide = side
+    .slice()
+    .sort((a, b) => (wantSell ? orderPrice(a) - orderPrice(b) : orderPrice(b) - orderPrice(a)));
+  const allTop = allSide[0] || null;
+  const allPrice = allTop ? orderPrice(allTop) : null;
+  const allBetter = bestPrice != null && allPrice != null && (wantSell ? allPrice < bestPrice : allPrice > bestPrice);
+
   return {
     kind: 'market',
     direction: target.direction,
@@ -68,6 +102,7 @@ function snapshotMarket(orders, target) {
     top: eligible.slice(0, 10).map(compactOrder),
     countAtTarget: atOrBetter.length,
     totalEligible: eligible.length,
+    allBest: allBetter ? { price: allPrice, order: compactOrder(allTop) } : null,
     ts: Date.now(),
   };
 }
@@ -87,6 +122,8 @@ function compactOrder(o) {
       status: o.user?.status || 'offline',
       reputation: o.user?.reputation ?? null,
       platform: o.user?.platform || '',
+      // 对方自己用的语言，决定 /w 文案发中文还是英文
+      locale: o.user?.locale || '',
     },
   };
 }
@@ -161,6 +198,7 @@ function compactAuction(a, price) {
       slug: a.owner?.slug || '',
       status: a.owner?.status || 'offline',
       reputation: a.owner?.reputation ?? null,
+      locale: a.owner?.locale || '',
     },
   };
 }

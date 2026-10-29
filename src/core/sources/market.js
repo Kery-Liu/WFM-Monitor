@@ -35,23 +35,32 @@ class MarketSource {
     return res.json?.data || { sell: [], buy: [] };
   }
 
-  /** 48 小时成交统计（用于走势图与参考价），带 5 分钟缓存 */
+  /**
+   * 48 小时 + 90 天成交统计
+   * 官方同一个响应里就带 statistics_closed['48hours'] 和 ['90days']，
+   * 一次请求两用：走势图看短期波动，90 天数据算历史分位与推荐价区间。
+   * 带 5 分钟缓存。
+   */
   async fetchStats(slug, ttlMs = 300000) {
     const hit = this.statsCache.get(slug);
-    if (hit && Date.now() - hit.ts < ttlMs) return hit.series;
+    if (hit && Date.now() - hit.ts < ttlMs) return hit.data;
     const res = await this.client.request(`/v1/items/${encodeURIComponent(slug)}/statistics`, { priority: 8, label: `获取 ${slug} 统计` });
-    const closed = res.json?.payload?.statistics_closed?.['48hours'] || [];
-    const series = closed
-      .map((d) => ({
-        t: Date.parse(d.datetime),
-        median: d.median ?? d.avg_price ?? null,
-        min: d.min_price ?? null,
-        max: d.max_price ?? null,
-        volume: d.volume ?? 0,
-      }))
-      .filter((d) => Number.isFinite(d.t) && d.median != null);
-    this.statsCache.set(slug, { ts: Date.now(), series });
-    return series;
+    const closed = res.json?.payload?.statistics_closed || {};
+    const mapRow = (d) => ({
+      t: Date.parse(d.datetime),
+      median: d.median ?? d.avg_price ?? null,
+      min: d.min_price ?? null,
+      max: d.max_price ?? null,
+      wa: d.wa_price ?? null,
+      volume: d.volume ?? 0,
+    });
+    const pick = (key) =>
+      (closed[key] || [])
+        .map(mapRow)
+        .filter((d) => Number.isFinite(d.t) && d.median != null);
+    const data = { h48: pick('48hours'), d90: pick('90days') };
+    this.statsCache.set(slug, { ts: Date.now(), data });
+    return data;
   }
 }
 
