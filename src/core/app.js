@@ -20,6 +20,7 @@ const { AuctionSource } = require('./sources/auction');
 const { OrderStream, WS_URL } = require('./sources/stream');
 const { Resolver } = require('./domain/resolver');
 const { summarize90, recommendBand } = require('./domain/stats');
+const { buildCompare, summarize } = require('./domain/parts');
 const { Scheduler } = require('./engine/scheduler');
 const { Notifier } = require('./notify');
 const { EmailControl } = require('./control');
@@ -229,6 +230,67 @@ class App extends EventEmitter {
     };
   }
 
+  /**
+   * 套装散件对比：一次拉齐所有散件的最低挂单价。
+   *
+   * 取数是串行的，最坏只占用限速队列两个槽位中的一个，监控始终有一条通路；
+   * 6 件散件按 500ms 间隔约 3 秒，本来瓶颈就在间隔上，串行不会更慢。
+   * priority=3 让这批请求排到监控（5）之前——是用户正盯着的操作。
+   *
+   * 结果按 slug + 平台 + 语言缓存（这三者进请求头，变了订单集就不同）。
+   */
+  async partsCompare(slug, { force = false, setPrice = null, buyerFilter = 'ingame' } = {}) {
+    const detail = await this.itemDetail(slug);
+    const parts = detail.parts || [];
+    if (!parts.length) {
+      return { setSlug: slug, setZh: detail.zh, setEn: detail.en, parts: [], totals: null, reason: 'not-a-set' };
+    }
+
+    const g = this.config.get().global;
+    const key = `${slug}|${g.platform}|${g.crossplay}|${g.language}|${buyerFilter}`;
+    if (!this._partsCache) this._partsCache = new Map();
+    if (!this._partsJobs) this._partsJobs = new Map();
+
+    const ttlSec = Math.max(60, Number(this.config.get().network.statsCacheSec) || 300);
+    const hit = this._partsCache.get(key);
+    if (!force && hit && Date.now() - hit.ts < ttlSec * 1000) {
+      return {
+        ...hit.data,
+        totals: summarize(hit.data.parts, setPrice),
+        fromCache: true,
+        ageSec: Math.round((Date.now() - hit.ts) / 1000),
+      };
+    }
+    // 同一套装同时被开两次窗口时，复用同一个在飞任务，不重复发请求
+    if (this._partsJobs.has(key)) return this._partsJobs.get(key);
+
+    const job = (async () => {
+      const ordersBySlug = {};
+      for (const p of parts) {
+        try {
+          ordersBySlug[p.slug] = await this.marketSource.fetchOrders(p.slug, { priority: 3, retries: 1 });
+        } catch (e) {
+          ordersBySlug[p.slug] = { error: e.kind || e.code || 'error' };
+        }
+      }
+      const rows = buildCompare(parts, ordersBySlug, { buyerFilter });
+      const data = { setSlug: slug, setZh: detail.zh, setEn: detail.en, parts: rows, ts: Date.now() };
+      this._partsCache.set(key, { ts: Date.now(), data });
+      if (this._partsCache.size > 12) {
+        const oldest = Array.from(this._partsCache.entries()).sort((a, b) => a[1].ts - b[1].ts)[0];
+        if (oldest) this._partsCache.delete(oldest[0]);
+      }
+      return { ...data, totals: summarize(rows, setPrice), fromCache: false };
+    })();
+
+    this._partsJobs.set(key, job);
+    try {
+      return await job;
+    } finally {
+      this._partsJobs.delete(key);
+    }
+  }
+
   // ---------------- 目标管理 ----------------
   targets() {
     return this.scheduler.views();
@@ -427,6 +489,9 @@ class App extends EventEmitter {
 
   async refreshCatalog() {
     await this.catalog.ensureFresh(true);
+    // 清单刷新后散件的 id→slug 映射可能变，旧对比结果直接作废
+    if (this._partsCache) this._partsCache.clear();
+    if (this._detailCache) this._detailCache.clear();
     return this.catalog.snapshotMeta();
   }
 

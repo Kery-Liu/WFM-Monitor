@@ -10,6 +10,7 @@ const { app, BrowserWindow, ipcMain, Notification, Tray, Menu, shell, nativeImag
 const path = require('path');
 const fs = require('fs');
 const { App } = require('../core/app');
+const partsWindow = require('./windows/partsWindow');
 
 app.setAppUserModelId('com.kery.wfmmarket.monitor');
 
@@ -313,6 +314,20 @@ function registerIpc() {
     'items:detail': (_e, slug) => core.itemDetail(slug),
     'items:quote': (_e, slug) => core.itemQuote(slug),
 
+    // 散件对比：子窗口只能通过这几个口子拿数据
+    'parts:open': (_e, meta) => {
+      if (!meta || !meta.slug) throw new Error('缺少物品标识');
+      const w = partsWindow.open(meta.slug, meta);
+      return { opened: !!w, count: partsWindow.count() };
+    },
+    'parts:get': (_e, slug, opts) => core.partsCompare(slug, { ...(opts || {}), force: false }),
+    'parts:update': (_e, slug, opts) => core.partsCompare(slug, { ...(opts || {}), force: true }),
+    'parts:meta': () => ({
+      lang: uiLang(),
+      theme: core.config.get().ui.theme,
+      version: app.getVersion(),
+    }),
+
     'events:list': (_e, n) => core.events(n),
     'events:clear': () => core.clearEvents(),
 
@@ -390,6 +405,10 @@ app.on('will-quit', () => {
 
 app.on('before-quit', async (e) => {
   quitting = true;
+  // 先收掉所有散件对比窗口，否则 app.exit 之前会留下独立顶层窗口
+  try {
+    partsWindow.closeAll();
+  } catch (_) {}
   if (core) {
     e.preventDefault();
     try {

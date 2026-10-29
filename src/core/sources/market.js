@@ -12,11 +12,16 @@ class MarketSource {
     this.statsCache = new Map(); // slug -> { ts, series }
   }
 
-  /** 某物品全部订单（含 buy/sell、含离线用户） */
-  async fetchOrders(slug) {
+  /**
+   * 某物品全部订单（含 buy/sell、含离线用户）
+   * priority 默认 5（监控主路径）；散件对比这类用户主动等待的批量取数传更小的值插队。
+   */
+  async fetchOrders(slug, { priority = 5, retries, timeoutMs, label } = {}) {
     const res = await this.client.request(`/v2/orders/item/${encodeURIComponent(slug)}`, {
-      priority: 5,
-      label: `获取 ${slug} 订单`,
+      priority,
+      retries,
+      timeoutMs,
+      label: label || `获取 ${slug} 订单`,
     });
     if (!res.json || !Array.isArray(res.json.data)) {
       const e = new Error('订单响应结构异常');

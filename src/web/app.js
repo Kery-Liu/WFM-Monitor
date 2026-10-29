@@ -925,6 +925,7 @@ function renderDetail() {
         </label>
         <button class="btn sm" id="btn-check">立即检查</button>
         <button class="btn sm gold" id="btn-whisper" ${snap.bestOrder ? '' : 'disabled'} title="复制发给最优卖家的游戏内私聊">复制喊话</button>
+        ${t.kind === 'market' && /_set$/.test(t.slug || '') ? `<button class="btn sm" id="btn-parts" title="${isEN() ? 'Compare part prices in a separate window' : '在独立窗口里对比各个散件的价格'}">${isEN() ? 'Compare parts' : '比较散件'}</button>` : ''}
         <button class="btn sm" id="btn-edit">编辑</button>
         <button class="btn sm danger" id="btn-del">删除</button>
       </div>
@@ -1128,6 +1129,24 @@ function bindDetail(v) {
     whisper.addEventListener('click', () => {
       const best = v.snapshot?.bestOrder;
       if (best) copyWhisper(best, v.target);
+    });
+  }
+  const partsBtn = $('#btn-parts', pane);
+  if (partsBtn) {
+    partsBtn.addEventListener('click', async () => {
+      partsBtn.disabled = true;
+      try {
+        await api.openParts({
+          slug: v.target.slug,
+          setPrice: v.snapshot?.bestPrice ?? null,
+          nameZh: v.target.nameZh || '',
+          nameEn: v.target.nameEn || '',
+        });
+      } catch (e) {
+        toast(isEN() ? 'Failed to open' : '打开失败', e.message, 'err');
+      } finally {
+        partsBtn.disabled = false;
+      }
     });
   }
   const edit = $('#btn-edit', pane);

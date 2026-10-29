@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https://warframe.market data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'" />
+<title>散件对比</title>
+<script src="theme-boot.js"></script>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body class="parts-body">
+<header class="parts-head">
+  <div class="parts-title">
+    <h1 id="p-title">散件对比</h1>
+    <div class="note" id="p-sub">正在读取…</div>
+  </div>
+  <div class="row gap8">
+    <button class="btn sm" id="p-refresh">更新</button>
+  </div>
+</header>
+
+<main class="parts-main">
+  <div class="parts-summary" id="p-summary"></div>
+  <div class="panel">
+    <div class="panel-head">
+      <span id="p-table-title">各部件最低价</span>
+      <span class="note" id="p-table-note"></span>
+    </div>
+    <div class="panel-body flush" id="p-table"></div>
+  </div>
+</main>
+
+<div id="toast-root" class="toast-root"></div>
+<script src="parts.js"></script>
+</body>
+</html>

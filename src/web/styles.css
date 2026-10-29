@@ -816,3 +816,54 @@ select { cursor: pointer; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--scroll); border-radius: var(--r-pill); border: 2px solid transparent; background-clip: padding-box; }
 ::-webkit-scrollbar-thumb:hover { background: var(--scroll-hover); background-clip: padding-box; }
+
+/* ---------------- 散件对比窗口 ---------------- */
+.parts-body { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+.parts-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s-4);
+  padding: var(--s-5) var(--s-6) var(--s-3);
+  border-bottom: 1px solid var(--line);
+}
+.parts-title h1 { font-size: var(--fs-xl); margin: 0 0 var(--s-1); }
+.parts-title .note { font-size: var(--fs-xs); color: var(--muted); }
+.parts-main { flex: 1 1 auto; overflow: auto; padding: var(--s-5) var(--s-6) var(--s-6); }
+.parts-summary {
+  display: flex; flex-wrap: wrap; gap: var(--s-2); align-items: center;
+  font-size: var(--fs-sm); color: var(--text-2);
+  padding: var(--s-3) var(--s-4); margin-bottom: var(--s-4);
+  background: var(--panel-2); border-radius: var(--r-md);
+  box-shadow: 0 0 0 1px var(--line);
+}
+.parts-summary:empty { display: none; }
+.parts-grid td.part-name { font-weight: 500; white-space: nowrap; }
+
+/* 骨架条：先把行占住，数据到了位置不跳；扫光用现有刻度，不引入新资源 */
+.skel-bar {
+  height: 9px; border-radius: var(--r-pill);
+  background: var(--panel-3); position: relative; overflow: hidden;
+}
+.skel-bar::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, var(--gold-soft), transparent);
+  transform: translateX(-100%);
+  animation: wfm-sweep 1.1s var(--ease) infinite;
+  animation-delay: calc(var(--i, 0) * 90ms);
+}
+@keyframes wfm-sweep { to { transform: translateX(100%); } }
+.parts-grid tbody tr.filled { animation: wfm-fade .2s var(--ease); }
+@keyframes wfm-fade { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+
+/* 13px 圆环：只用在「更新中」按钮里 */
+.spin {
+  display: inline-block; width: 13px; height: 13px; margin-right: var(--s-2);
+  border-radius: var(--r-pill); vertical-align: -2px;
+  border: 2px solid var(--line-strong); border-top-color: var(--gold);
+  animation: wfm-spin .9s linear infinite;
+}
+@keyframes wfm-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .skel-bar::after { animation: none; }
+  .spin { animation: none; }
+  .parts-grid tbody tr.filled { animation: none; }
+}
