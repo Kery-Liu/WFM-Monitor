@@ -16,11 +16,15 @@
 ## Highlights
 
 - Keyword search: `ash prime 一套`, `ash p set`, `沙皇`, `kuva zarr` and similar inputs are matched. Aliases and fuzzy matching return candidates with a confidence score, and the item must be confirmed by clicking.
-- Set splitting: after selecting a set, its parts are listed and can be monitored individually.
+- Set splitting: after selecting a set, its parts are listed and can be monitored individually; "Compare parts" opens a separate window that puts the full-set price next to the sum of parts.
+- Suggested target price: after picking an item, a range is derived from the 90-day low; one click fills the price field.
+- Auto scheduling: monitors are checked by priority tier (high 20s / mid 60s / low 180s) and capped by a bandwidth budget; any slowdown is labelled on the card and detail page instead of happening silently.
 - Anti-spam: notifications support a trigger cooldown, a re-notify threshold, an hourly cap, and quiet hours.
-- Price chart: shows the official 48-hour trading data, with the target price and the historical median on one chart; hover to see price and volume at each point.
-- Trade whisper: generates an in-game `/w` message, switching between English and Chinese, and adds the rank for ranked mods.
+- Price chart: official 48-hour and 90-day series are switchable, with the current price's percentile shown underneath.
+- Lowest-overall hint: when a hit is not the cheapest listing site-wide, both the detail page and the notification include that cheaper price with the seller's status and last update time.
+- Trade whisper: generates an in-game `/w` message in the *recipient's* language (locale starting with `zh` gets Chinese, everything else English), and adds the rank for ranked mods.
 - Email remote control: sending a mail whose body says `check` runs a full round and returns a price summary.
+- Update check: silent on startup, Gitee as primary source and GitHub as fallback; the "Go to update" button under Settings → Maintenance only enables when a newer version is confirmed.
 - Tray resident: closing the window keeps monitoring; a global hotkey can trigger "check all".
 - UI and themes: bilingual Chinese/English interface with dark and light themes; item names and market links follow the language.
 
@@ -34,13 +38,13 @@
 |---|---|
 | ![Riven rules](https://raw.githubusercontent.com/Kery-Liu/WFM-Monitor-assets/main/07-riven-en.png) | ![Light theme](https://raw.githubusercontent.com/Kery-Liu/WFM-Monitor-assets/main/08-theme-light.png) |
 
-*Screenshots are from v1.1.5. The app ships in both Chinese and English; the language follows the UI setting.*
+*Screenshots are from v1.1.5. The auto-scheduling panel, suggested price, parts window and 90-day chart added in v1.2.0 are not re-shot — see [CHANGELOG](./CHANGELOG.md). The app ships in both Chinese and English; the language follows the UI setting.*
 
 ## Install
 
 ### Option 1: Installer (recommended)
 
-1. Download the latest installer `WFM-Monitor-Setup-1.1.5.exe` from the Releases page.
+1. Download the latest installer `WFM-Monitor-Setup-1.2.0.exe` from the Releases page (a [Gitee mirror](https://gitee.com/Kery1126/WFM-Monitor/releases) is available if GitHub is slow).
 2. Run it and pick an install folder (default `%LOCALAPPDATA%\Programs\WFM-Monitor`). **No administrator rights needed.**
 3. The app starts automatically; desktop and Start Menu shortcuts are created.
 4. On first launch it downloads the item catalog in the background (about 10–30 seconds), then you can search and add targets.
@@ -136,6 +140,7 @@ warframe.market allows 3 requests/second; this app defaults to 2 and should neve
 | v1.1.3 | 2026-10-26 | Market / riven switch now slides the selected segment, cross-fades the body and eases the window height |
 | v1.1.4 | 2026-10-26 | Market and riven keep their own drafts: switching never loses input and restores it on the way back; only closing the window discards them |
 | v1.1.5 | 2026-10-26 | Fixes the window growing then shrinking when switching in the default (empty) state |
+| v1.2.0 | 2026-10-30 | Auto scheduling with a bandwidth budget, 90-day percentile and chart toggle, suggested target price, lowest-overall hint, parts comparison window, whisper language follows the recipient, Gitee+GitHub update check; also fixes 1p bait listings skewing the lowest price and the unvalidated `openExternal` |
 
 See [CHANGELOG.md](./CHANGELOG.md) for the symptom, root cause, fix and verification of every release.
 
