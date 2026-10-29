@@ -37,6 +37,7 @@ class Monitor extends EventEmitter {
     this.notifyCount = 0;
     this.busy = false;
     this.forceRun = false;
+    this.budgetLevel = 0; // 0/1/2 —— 被全局预算降级的档数，由 Scheduler 每轮写入
     this.rawCache = [];
     this.rawCacheAt = 0;
   }
@@ -45,8 +46,47 @@ class Monitor extends EventEmitter {
     return this.target.id;
   }
 
+  /**
+   * 固定间隔。**语义不许改**：_attach 的首次错峰、refreshSnapshot 与
+   * applyRealtime 的缓存保鲜都按它算。自动调度走 effectiveIntervalMs。
+   */
   get intervalMs() {
     return Math.max(10, this.target.intervalSec || 60) * 1000;
+  }
+
+  /** 自动调度是否开启（每次现读配置，切开关立刻生效） */
+  get autoMode() {
+    const s = this.deps.config.get().schedule;
+    return !!(s && s.auto);
+  }
+
+  /** 基准间隔：自动模式看优先级档位，固定模式看用户填的秒数 */
+  get baseIntervalMs() {
+    if (!this.autoMode) return this.intervalMs;
+    const tiers = this.deps.config.get().schedule.tiers || {};
+    const sec = tiers[this.target.priority || 'normal'] || 60;
+    return Math.max(10, Number(sec) || 60) * 1000;
+  }
+
+  /** 状态自适应：已达标就别高频盯了；快够到目标时盯紧一点 */
+  get stateFactor() {
+    if (this.state === 'trigger') return 3;
+    const s = this.snapshot;
+    if (s && s.bestPrice != null && s.targetPrice > 0) {
+      const gap = Math.abs(s.delta == null ? s.targetPrice - s.bestPrice : s.delta);
+      if (gap / s.targetPrice <= 0.05) return 0.5;
+    }
+    return 1;
+  }
+
+  /** 预算降级系数，由 Scheduler 写入的 budgetLevel 决定 */
+  get budgetFactor() {
+    return [1, 2, 3][this.budgetLevel] || 1;
+  }
+
+  get effectiveIntervalMs() {
+    const v = Math.round(this.baseIntervalMs * this.stateFactor * this.budgetFactor);
+    return Math.min(3600000, Math.max(5000, v));
   }
 
   get label() {
@@ -143,6 +183,8 @@ class Monitor extends EventEmitter {
       else this.nextRunAt = 0;
     } catch (err) {
       this.failures += 1;
+      // 失败时清掉预算降级，避免「退避 × 降级」双重放大把间隔拉得太离谱
+      this.budgetLevel = 0;
       this.lastError = err.toJSON ? err.toJSON() : { message: err.message, kind: 'unknown' };
       this.state = 'error';
       this.deps.logger.warn('monitor', `${this.label} 检查失败(${this.lastError.kind || 'unknown'})：${err.message}`);
@@ -193,14 +235,17 @@ class Monitor extends EventEmitter {
 
   _nextDelay() {
     const g = this.deps.config.get().global;
-    const base = this.intervalMs;
+    const base = this.effectiveIntervalMs;
     const f = 1 + (Math.random() * 2 - 1) * ((g.jitterPct || 0) / 100);
     return Math.max(5000, Math.round(base * f));
   }
 
   _backoffDelay() {
     const g = this.deps.config.get().global;
-    const base = this.intervalMs;
+    // 用基准间隔而不是 effectiveIntervalMs：1.5^failures 恒 ≥1.5，
+    // 而 stateFactor 最小 0.5、budgetFactor 恒 ≥1，所以失败退避天然慢于正常节奏，
+    // 不会出现「档位高就绕过退避」的情况。
+    const base = this.baseIntervalMs;
     const mult = Math.min(6, 1.5 ** this.failures);
     return Math.min(600000, Math.round(base * mult * (1 + Math.random() * 0.3)));
   }
@@ -498,6 +543,18 @@ class Monitor extends EventEmitter {
       snapshot: this.snapshot,
       checkCount: this.checkCount,
       notifyCount: this.notifyCount,
+      // 调度状态：界面据此显示「档位 / 被预算降级 / 已达标放慢」，不允许静默降速
+      schedule: {
+        mode: this.autoMode ? 'auto' : 'fixed',
+        tier: t.priority || 'normal',
+        baseSec: Math.round(this.baseIntervalMs / 1000),
+        stateFactor: this.stateFactor,
+        budgetLevel: this.budgetLevel,
+        budgetFactor: this.budgetFactor,
+        effectiveSec: Math.round(this.effectiveIntervalMs / 1000),
+        limited: this.budgetLevel > 0,
+        reason: this.budgetLevel > 0 ? 'budget' : this.stateFactor === 3 ? 'triggered' : this.stateFactor === 0.5 ? 'near' : null,
+      },
       durationMs,
       history: this.deps.store.getHistory(this.id).slice(-120),
     };

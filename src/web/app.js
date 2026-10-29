@@ -864,7 +864,8 @@ function renderTargets() {
           ${!t.enabled ? '<span class="pill gray">已停用</span>' : ''}
           ${t.enabled && v.state === 'error' ? `<span class="pill red">异常</span>` : ''}
           <span class="pill">${esc(t.kind === 'auction' ? '拍卖' : t.direction === 'sell' ? '收购' : '出售')}</span>
-          <span class="pill ${v.failures ? 'red' : ''}">${t.intervalSec}s</span>
+          <span class="pill ${v.failures ? 'red' : ''}">${v.schedule && v.schedule.mode === 'auto' ? `${tierLabel(v.schedule.tier)} · ${v.schedule.effectiveSec}s` : `${t.intervalSec}s`}</span>
+          ${v.schedule && v.schedule.limited ? `<span class="pill warn" title="${isEN() ? 'Budget cap reached — slowed down by priority. Targets still notify normally.' : '预算已到上限，按优先级自动放慢；不影响达标通知'}">${isEN() ? 'Capped' : '受限'} ×${v.schedule.budgetFactor}</span>` : ''}
           ${t.enabled ? `<span class="pill gray" data-countdown="${v.nextInMs || 0}">${dur(v.nextInMs || 0)}</span>` : '<span class="pill gray">不采集</span>'}
         </div>
         ${sparkline(v.history, 300, 28, color)}
@@ -901,7 +902,7 @@ function renderDetail() {
     { label: dirLabel, value: p(snap.bestPrice), cls: snap.matched ? 'gold' : 'teal', sub: snap.bestPrice == null ? '暂无符合筛选的挂单' : `符合筛选 ${snap.totalEligible || 0} 条` },
     { label: t.kind === 'auction' ? '一口价上限' : t.direction === 'sell' ? '目标最低价' : '目标最高价', value: p(t.targetPrice), cls: '', sub: `条件 ${t.direction === 'sell' && t.kind !== 'auction' ? '≥' : '≤'} ${p(t.targetPrice)}` },
     { label: '差距', value: snap.delta == null ? '--' : p(Math.abs(snap.delta)), cls: snap.matched ? 'gold' : '', sub: snap.matched ? '已优于目标' : '距目标' },
-    { label: '下次检查', value: '', valueHtml: `<b data-countdown="${v.nextInMs || 0}">${dur(v.nextInMs || 0)}</b>`, cls: '', sub: `间隔 ${t.intervalSec}s` },
+    { label: '下次检查', value: '', valueHtml: `<b data-countdown="${v.nextInMs || 0}">${dur(v.nextInMs || 0)}</b>`, cls: '', sub: scheduleSub(v) },
   ];
 
   pane.innerHTML = `
@@ -983,6 +984,35 @@ function chartSeries(v) {
   const st = v.target.slug ? S.statsCache.get(v.target.slug) : null;
   if (!st) return null;
   return S.chartRange === '90' ? st.d90 || [] : st.h48 || [];
+}
+
+/** 优先级档位的中英标签 */
+function tierLabel(tier) {
+  const zh = { high: '高', normal: '中', low: '低' };
+  const en = { high: 'High', normal: 'Mid', low: 'Low' };
+  const map = isEN() ? en : zh;
+  return map[tier] || map.normal;
+}
+
+/** 详情页「下次检查」的副标题：把降速原因写清楚，避免被误当成故障 */
+function scheduleSub(v) {
+  const sc = v.schedule;
+  const en = isEN();
+  if (!sc) return en ? `every ${v.target.intervalSec}s` : `间隔 ${v.target.intervalSec}s`;
+  if (sc.limited) {
+    return en
+      ? `slowed to ${sc.effectiveSec}s by budget cap (base ${sc.baseSec}s)`
+      : `因预算受限已放慢至 ${sc.effectiveSec}s（原 ${sc.baseSec}s）`;
+  }
+  if (sc.mode !== 'auto') return en ? `every ${v.target.intervalSec}s` : `间隔 ${v.target.intervalSec}s`;
+  const extra = sc.reason === 'triggered'
+    ? (en ? ' · hit, slowed' : ' · 已达标放慢')
+    : sc.reason === 'near'
+      ? (en ? ' · close, sped up' : ' · 接近目标提速')
+      : '';
+  return en
+    ? `${sc.effectiveSec}s (${tierLabel(sc.tier)}${extra})`
+    : `间隔 ${sc.effectiveSec}s（${tierLabel(sc.tier)}档${extra}）`;
 }
 
 function chartPlaceholder(v) {
@@ -1397,6 +1427,27 @@ function renderSettings() {
     </div>
 
     <div class="panel">
+      <div class="panel-head"><span>自动调度</span></div>
+      <div class="panel-body">
+        <div class="form-row">
+          <div class="field">
+            <label class="switch">
+              <input type="checkbox" id="s-auto-sched" ${cfg.schedule?.auto !== false ? 'checked' : ''}/>
+              <span class="track"></span>
+              <span class="switch-label">启用自动调度</span>
+            </label>
+            <div class="hint">按优先级分档检查（高 20s / 中 60s / 低 180s），并用带宽预算封顶。关闭后每个目标回到自己填的固定间隔。</div>
+          </div>
+          <div class="field">
+            <label>本分钟预算</label>
+            <div class="note" id="s-budget-line">—</div>
+            <div class="hint">每分钟允许的检查次数，取「带宽可承受」与「官方限速可承受」的较小值</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
       <div class="panel-head"><span>外观</span><span class="note">切换后立即生效</span></div>
       <div class="panel-body">
         <div class="form-row">
@@ -1744,6 +1795,24 @@ function bindSettingsForm() {
     const el = $('#s-version');
     if (el) el.textContent = `版本 ${v.app}｜Electron ${v.electron}｜Node ${v.node}`;
   });
+  refreshBudgetLine();
+}
+
+/** 预算实时用量：让「为什么变慢了」有一个能查的数字，而不是玄学 */
+function refreshBudgetLine() {
+  const el = $('#s-budget-line');
+  if (!el) return;
+  api.status().then((s) => {
+    const b = s && s.scheduler && s.scheduler.budget;
+    if (!b) return;
+    const pct = Math.round((b.utilization || 0) * 100);
+    const deg = b.degraded && b.degraded.length
+      ? (isEN() ? ` · ${b.degraded.length} slowed` : ` · 降速目标 ${b.degraded.length} 个`)
+      : '';
+    el.textContent = isEN()
+      ? `${b.used} / ${b.capacity} checks (${pct}%)${deg}`
+      : `已用 ${b.used} / ${b.capacity} 次（${pct}%）${deg}`;
+  }).catch(() => {});
 }
 
 function markSettingsDirty() {
@@ -1831,6 +1900,8 @@ async function saveSettingsFromForm() {
         maxPer10Min: numOr('#s-ctl-max', 10),
       },
     },
+    // 只传 auto：预算参数保留原值，deepMerge 会合并而不是覆盖整段
+    schedule: { auto: chk('#s-auto-sched') },
     ui: {
       language: $('#s-ui-lang')?.value || 'zh',
       theme: $('#s-theme')?.value || 'auto',
@@ -2090,6 +2161,12 @@ function renderPartsBlock() {
   </div>`;
 }
 
+/** 自动调度是否开启：新建/编辑表单据此在「检查间隔」和「检查优先级」之间切换 */
+function autoSchedule() {
+  const s = S.settings && S.settings.schedule;
+  return !!(s && s.auto);
+}
+
 function defaultForm(kind) {
   return {
     kind,
@@ -2098,6 +2175,8 @@ function defaultForm(kind) {
     buyerFilter: 'ingame',
     minQuantity: 1,
     intervalSec: 60,
+    // 自动调度下按档位查；固定模式仍用 intervalSec（两者同时提交，后端都保留）
+    priority: 'normal',
     confirmRounds: 1,
     auctionMode: 'buyout',
     positiveStats: [],
@@ -2630,9 +2709,17 @@ function renderRuleForm() {
         <div class="hint" id="hint-price">${isAuction ? '一口价不高于此值即通知' : f.direction === 'sell' ? '收购价 ≥ 此值即通知' : '出售价 ≤ 此值即通知'}</div>
       </div>
       <div class="field">
-        <label>检查间隔 (秒)</label>
+        ${autoSchedule()
+    ? `<label>检查优先级</label>
+        <div class="seg" id="f-priority">
+          <button type="button" class="${f.priority === 'high' ? 'on' : ''}" data-v="high">高 20s</button>
+          <button type="button" class="${f.priority === 'normal' ? 'on' : ''}" data-v="normal">中 60s</button>
+          <button type="button" class="${f.priority === 'low' ? 'on' : ''}" data-v="low">低 180s</button>
+        </div>
+        <div class="hint">高优先级查得更勤；总量受带宽预算约束，超了会自动放慢低档</div>`
+    : `<label>检查间隔 (秒)</label>
         <input type="number" id="f-interval" min="10" max="3600" value="${f.intervalSec || 60}"/>
-        <div class="hint">越小越快，但别低于 15s</div>
+        <div class="hint">越小越快，但别低于 15s</div>`}
       </div>
       <div class="field">
         <label>连续确认次数</label>
@@ -2764,6 +2851,8 @@ function bindRuleForm() {
     const hint = $('#hint-price');
     if (hint) hint.textContent = f.direction === 'sell' ? '收购价 ≥ 此值即通知' : '出售价 ≤ 此值即通知';
   });
+  // 自动调度开启时才有这个控件；关闭时 seg() 内部会直接 return
+  seg('#f-priority', 'priority');
   seg('#f-buyer', 'buyerFilter');
   seg('#f-aucmode', 'auctionMode');
 

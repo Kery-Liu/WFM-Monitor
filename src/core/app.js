@@ -402,6 +402,13 @@ class App extends EventEmitter {
       if (next.network.streamEnabled) this.stream.start();
       else this.stream.stop();
     }
+    // 调度模式 / 预算参数变了：立刻重排所有目标，否则用户要等一个完整间隔才看到效果
+    const schedBefore = JSON.stringify(before.schedule || {});
+    const schedAfter = JSON.stringify(next.schedule || {});
+    if (schedBefore !== schedAfter) {
+      this.scheduler.setMode();
+      this.logger.info('app', `调度参数已更新：${next.schedule && next.schedule.auto ? '自动' : '固定'}模式`);
+    }
   }
 
   // ---------------- 事件 ----------------

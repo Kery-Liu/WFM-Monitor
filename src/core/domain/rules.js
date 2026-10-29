@@ -208,6 +208,14 @@ function snapshotFor(target, raw) {
   return target.kind === 'auction' ? snapshotAuction(raw, target) : snapshotMarket(raw, target);
 }
 
+/** 把固定间隔翻译成语义相近的优先级档位：10–30s→高，≤120s→中，其余→低 */
+function inferTier(sec) {
+  const s = Number(sec) || 60;
+  if (s <= 30) return 'high';
+  if (s <= 120) return 'normal';
+  return 'low';
+}
+
 /** 校验并规范化用户提交的目标 */
 function sanitizeTarget(input) {
   const t = { ...input };
@@ -217,6 +225,9 @@ function sanitizeTarget(input) {
   t.buyerFilter = STATUS_GROUPS[t.buyerFilter] ? t.buyerFilter : 'all';
   t.minQuantity = Math.max(1, Number(t.minQuantity) || 1);
   t.intervalSec = Math.min(3600, Math.max(10, Number(t.intervalSec) || 60));
+  // 自动调度看 priority，固定模式看 intervalSec。两者同时保留：
+  // 关掉自动调度立刻回到旧行为，不需要任何数据迁移。
+  t.priority = ['high', 'normal', 'low'].includes(t.priority) ? t.priority : inferTier(t.intervalSec);
   t.enabled = t.enabled !== false;
   t.confirmRounds = Math.min(10, Math.max(1, Number(t.confirmRounds) || 1));
   if (t.kind === 'auction') {
@@ -230,4 +241,4 @@ function sanitizeTarget(input) {
   return t;
 }
 
-module.exports = { snapshotFor, snapshotMarket, snapshotAuction, sanitizeTarget, statusAllowed, STATUS_GROUPS };
+module.exports = { snapshotFor, snapshotMarket, snapshotAuction, sanitizeTarget, statusAllowed, inferTier, STATUS_GROUPS };

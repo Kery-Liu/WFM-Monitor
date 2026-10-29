@@ -9,6 +9,7 @@
 
 const { EventEmitter } = require('events');
 const { Monitor } = require('./monitor');
+const { BudgetAllocator } = require('./budget');
 
 class Scheduler extends EventEmitter {
   constructor({ config, logger, store, marketSource, auctionSource, notifier, catalog }) {
@@ -26,6 +27,48 @@ class Scheduler extends EventEmitter {
     this._ticking = false;
     this.startedAt = 0;
     this.stats = { ticks: 0, checks: 0, triggers: 0, errors: 0 };
+    this.budget = new BudgetAllocator();
+    this._avgKb = null;
+    this._lastCalib = 0;
+    this.syncBudget();
+  }
+
+  get autoMode() {
+    const s = this.config.get().schedule;
+    return !!(s && s.auto);
+  }
+
+  /** 把配置里的预算参数推给分配器（开关注释：改设置后要立刻调用） */
+  syncBudget() {
+    const s = this.config.get().schedule || {};
+    const b = s.budget || {};
+    this.budget.configure({
+      enabled: b.enabled !== false && s.auto !== false,
+      bandwidthKbPerMin: b.bandwidthKbPerMin,
+      avgKbPerCheck: this._avgKb != null ? this._avgKb : b.avgKbPerCheck,
+      minChecksPerMin: b.minChecksPerMin,
+      minRequestIntervalMs: this.config.get().global.minRequestIntervalMs,
+    });
+    return this.budget.capacity;
+  }
+
+  /**
+   * 用真实流量校准「每次检查多少 KB」。
+   * gzip 生效后这个值会自己掉到 ~70，容量随之翻倍，不需要另写适配。
+   * 每 30 秒最多一次，避免每跳都算。
+   */
+  _calibBudget(now) {
+    if (now - this._lastCalib < 30000) return;
+    this._lastCalib = now;
+    const b = (this.config.get().schedule || {}).budget || {};
+    if (b.calibrate === false) return;
+    const st = this.marketSource && this.marketSource.client && this.marketSource.client.stats;
+    if (!st || !st.ok) return;
+    const measured = st.bytes / st.ok / 1024;
+    if (!Number.isFinite(measured) || measured <= 0) return;
+    const prev = this._avgKb != null ? this._avgKb : Number(b.avgKbPerCheck) || 300;
+    this._avgKb = Math.max(20, Math.min(800, prev * 0.8 + measured * 0.2));
+    this.syncBudget();
   }
 
   get maxInflight() {
@@ -62,9 +105,12 @@ class Scheduler extends EventEmitter {
       this.stats.errors += 1;
       this.emit('monitor-error', e);
     });
-    // 首次执行时刻错开，避免启动瞬间全部并发
+    // 首次执行时刻错开，避免启动瞬间全部并发。
+    // 注意这里必须用 intervalMs（固定间隔）而不是 effectiveIntervalMs：
+    // 否则一个 intervalSec=3600 的老目标会被排到 180 秒后才首跑，回归会直接挂。
     const spread = Math.random() * Math.min(8000, m.intervalMs);
     m.scheduleIn(600 + spread);
+    this.budget.setTier(target.id, target.priority);
     this.monitors.set(target.id, m);
     return m;
   }
@@ -139,6 +185,7 @@ class Scheduler extends EventEmitter {
     if (!m) return false;
     m.removeAllListeners();
     this.monitors.delete(id);
+    this.budget.remove(id);
     this.emit('removed', { id });
     return true;
   }
@@ -181,10 +228,24 @@ class Scheduler extends EventEmitter {
         due.push(m);
       }
       if (!due.length) return;
-      // 间隔短的优先，其次失败少的优先
-      due.sort((a, b) => a.intervalMs - b.intervalMs || a.failures - b.failures);
-      for (const m of due) {
-        if (this._inflight >= this.maxInflight) break;
+
+      const slots = this.maxInflight - this._inflight;
+      if (slots <= 0) return;
+
+      this._calibBudget(now);
+
+      let grants;
+      if (this.autoMode) {
+        // 自动调度：优先级优先，同档里逾期越久越优先（保证不被饿死）
+        grants = this.budget.pick(due, { now, slots });
+      } else {
+        // 固定模式：沿用旧行为，间隔短的先跑，其次失败少的先跑
+        due.sort((a, b) => a.intervalMs - b.intervalMs || a.failures - b.failures);
+        grants = due.slice(0, slots);
+      }
+
+      for (const m of grants) {
+        m.budgetLevel = this.budget.levelOf(m.id);
         this._inflight += 1;
         this.stats.checks += 1;
         m.tick()
@@ -195,6 +256,28 @@ class Scheduler extends EventEmitter {
       }
     } finally {
       this._ticking = false;
+    }
+  }
+
+  /**
+   * 切换自动 / 固定调度。
+   * 必须立刻重排所有目标的 nextRunAt，否则用户拨了开关要等一个完整间隔才看到变化，
+   * 会误判「开关是假的」。
+   */
+  setMode() {
+    this.syncBudget();
+    for (const m of this.monitors.values()) {
+      if (!m.target.enabled) {
+        m.state = 'disabled';
+        m.nextRunAt = 0;
+      } else if (this.config.get().global.paused) {
+        m.state = 'paused';
+        m.nextRunAt = 0;
+      } else {
+        m.state = 'idle';
+        m.scheduleIn(400 + Math.random() * 1500);
+      }
+      this.emit('update', m.view());
     }
   }
 
@@ -228,6 +311,8 @@ class Scheduler extends EventEmitter {
       maxInflight: this.maxInflight,
       paused: !!this.config.get().global.paused,
       stats: this.stats,
+      auto: this.autoMode,
+      budget: this.budget.snapshot(),
     };
   }
 }

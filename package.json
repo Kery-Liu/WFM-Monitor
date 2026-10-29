@@ -20,6 +20,7 @@
     "test:i18n": "node scripts/e2e-i18n.js",
     "test:control": "node scripts/test-control.js",
     "test:update": "node scripts/test-update.js",
+    "test:budget": "node scripts/test-budget.js",
     "test:ui": "node scripts/test-ui.js"
   },
   "author": "Kery",

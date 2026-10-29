@@ -131,10 +131,12 @@ const SCRIPT = String.raw`(async () => {
   document.getElementById('m-form-wrap').innerHTML = renderRuleForm();
   bindRuleForm();
   await wait(220);
-  document.getElementById('f-interval').value = '45';
+  // 用「连续确认次数」当标记：它在中英、自动/固定两种模式下都存在
+  // （「检查间隔」输入框在自动调度开启时会被换成优先级分段控件）
+  document.getElementById('f-confirm').value = '3';
   await clickKind('market');
   await clickKind('auction');
-  ck('拍卖内容切回来还在', !!document.getElementById('f-interval') && document.getElementById('f-interval').value === '45', document.getElementById('f-interval') ? document.getElementById('f-interval').value : 'no form');
+  ck('拍卖内容切回来还在', !!document.getElementById('f-confirm') && document.getElementById('f-confirm').value === '3', document.getElementById('f-confirm') ? document.getElementById('f-confirm').value : 'no form');
   ck('两侧内容互不覆盖', !!document.getElementById('f-aucmode') && document.getElementById('f-price').value === '50', 'auc-side price=' + document.getElementById('f-price').value);
 
   // ---- 关闭窗口才释放草稿 ----
@@ -266,6 +268,42 @@ const SCRIPT = String.raw`(async () => {
   });
   ck('侧栏无横向溢出', overflow.length === 0, overflow.slice(0, 4).join(', '));
   ck('页面无横向滚动', document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1, document.documentElement.scrollWidth + '/' + document.documentElement.clientWidth);
+
+  // ---- 自动调度：表单在「优先级分段」与「固定间隔」之间切换 ----
+  S.settings = { ...(S.settings || {}), schedule: { auto: true } };
+  openAddModal();
+  await wait(120);
+  S.modal.selected = { slug: 'item_a', id: 'i1', zh: '物品 A', en: 'Item A' };
+  document.getElementById('m-form-wrap').innerHTML = renderRuleForm();
+  bindRuleForm();
+  await wait(160);
+  ck('自动调度下表单显示优先级', !!document.getElementById('f-priority') && !document.getElementById('f-interval'),
+    'prio=' + !!document.getElementById('f-priority') + ' interval=' + !!document.getElementById('f-interval'));
+  const prioBtns = document.querySelectorAll('#f-priority button');
+  ck('优先级三档', prioBtns.length === 3, prioBtns.length);
+  document.querySelector('#f-priority button[data-v="high"]').click();
+  await wait(80);
+  ck('点高档后档位写进表单', S.modal.form.priority === 'high', S.modal.form.priority);
+  ck('高档有选中态', !!document.querySelector('#f-priority button.on[data-v="high"]'));
+
+  S.settings.schedule = { auto: false };
+  document.getElementById('m-form-wrap').innerHTML = renderRuleForm();
+  ck('关闭自动调度后回到间隔输入框', !!document.getElementById('f-interval') && !document.getElementById('f-priority'),
+    'interval=' + !!document.getElementById('f-interval'));
+
+  // ---- 预算受限的可见性：卡片上有胶囊、详情页副标题说明原因 ----
+  S.settings.schedule = { auto: true };
+  const t0 = S.targets[0];
+  t0.schedule = { mode: 'auto', tier: 'high', baseSec: 20, stateFactor: 1, budgetLevel: 1, budgetFactor: 2, effectiveSec: 40, limited: true, reason: 'budget' };
+  S.selectedId = t0.id;
+  S.tab = 'detail';
+  renderAll();
+  await wait(120);
+  ck('卡片显示受限胶囊', !!document.querySelector('.card .pill.warn'));
+  ck('详情页说明降速原因', /预算受限/.test(document.querySelector('.stat small') ? document.body.textContent : ''),
+    (document.querySelectorAll('.stat small')[3] || {}).textContent || '');
+  delete t0.schedule;
+  S.settings.schedule = { auto: true };
 
   return R;
 })()`;
