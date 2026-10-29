@@ -16,6 +16,7 @@ const S = {
   attrs: [],
   statsCache: new Map(),
   statsLoading: new Set(),
+  chartRange: '48', // '48' | '90' —— 走势图的统计周期
   animKey: null, // 详情页错开入场的触发标记：只在切换监控对象时播放一次
   unread: 0,
   modal: null,
@@ -275,10 +276,14 @@ function beep() {
 }
 
 // ---------------- 游戏内私聊文案 ----------------
-function whisperLang() {
-  const pref = S.settings?.ui?.whisperLang || 'auto';
-  if (pref === 'en' || pref === 'zh') return pref;
-  return String(S.settings?.global?.language || 'zh-hans').startsWith('zh') ? 'zh' : 'en';
+/**
+ * 私聊文案跟随「对方」的语言，而不是我自己的界面语言。
+ * 官方订单的 user.locale 实测分布是 en 544 / zh-hans 200 / 其余为 ru/fr/es 等，
+ * 所以只分两档：locale 以 zh 开头就发中文，其余（含缺失）一律英文，国际通用。
+ */
+function whisperLangFor(order) {
+  const loc = String(order && order.user && order.user.locale ? order.user.locale : '').toLowerCase();
+  return loc.startsWith('zh') ? 'zh' : 'en';
 }
 
 /**
@@ -290,7 +295,7 @@ function whisperLang() {
  */
 function buildWhisper(order, t) {
   if (!order || !order.user) return '';
-  const zh = whisperLang() === 'zh';
+  const zh = whisperLangFor(order) === 'zh';
   const user = order.user.name || order.user.slug || '';
   const price = order.platinum;
 
@@ -375,6 +380,60 @@ function askDialog({ title, message, buttons = [] }) {
       if (e.target.id === 'dlg-mask') done('cancel');
     });
   });
+}
+
+/**
+ * 「全网最低」详情弹窗
+ * 这个价来自不满足用户筛选条件的玩家（多半是离线号），所以必须把状态和最后更新时间
+ * 摆在最显眼处——否则用户会当成能立刻成交的价格。
+ */
+function showAllBest(order, t) {
+  const root = $('#dialog-root');
+  const o = order.user || {};
+  const en = isEN();
+  const L = (zh, e) => (en ? e : zh);
+  const statusText = en
+    ? { ingame: 'in game', online: 'online', offline: 'offline' }
+    : { ingame: '游戏中', online: '在线', offline: '离线' };
+  const statusCls = o.status === 'ingame' ? 'green' : o.status === 'online' ? 'teal' : 'gray';
+  root.innerHTML = `
+    <div class="modal-mask" id="allmin-mask">
+      <div class="dlg" style="max-width:420px">
+        <div class="dlg-title">${L('全网最低价', 'Lowest listed price')}</div>
+        <div class="dlg-msg">
+          <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:var(--s-3)">
+            <b style="font-size:var(--fs-xl);color:var(--gold)">${p(order.platinum)}</b>
+            <span class="pill ${statusCls}">${esc(statusText[o.status] || L('未知', 'unknown'))}</span>
+          </div>
+          <table class="grid" style="width:100%">
+            <tbody>
+              <tr><td class="note">${L('卖家', 'Seller')}</td><td>${esc(o.name || L('未知', 'unknown'))}</td></tr>
+              <tr><td class="note">${L('信誉', 'Reputation')}</td><td>${o.reputation == null ? '--' : o.reputation}</td></tr>
+              <tr><td class="note">${L('数量', 'Qty')}</td><td>${order.quantity == null ? '--' : order.quantity}</td></tr>
+              <tr><td class="note">${L('最后更新', 'Last updated')}</td><td>${order.updatedAt ? esc(ago(Date.parse(order.updatedAt))) : '--'}</td></tr>
+            </tbody>
+          </table>
+          <div class="hint" style="margin-top:var(--s-3)">${L('含离线与不满足你筛选条件的玩家，这个价通常无法立即成交', 'Includes offline sellers and orders filtered out by your conditions — usually not tradable right away')}</div>
+        </div>
+        <div class="dlg-btns">
+          <button class="btn" id="allmin-copy">${L('复制喊话', 'Copy whisper')}</button>
+          <button class="btn primary" id="allmin-close">${L('知道了', 'Got it')}</button>
+        </div>
+      </div>
+    </div>`;
+  const close = () => {
+    root.innerHTML = '';
+    document.removeEventListener('keydown', onKey);
+  };
+  const onKey = (e) => {
+    if (e.key === 'Escape') close();
+  };
+  document.addEventListener('keydown', onKey);
+  $('#allmin-close').addEventListener('click', close);
+  $('#allmin-mask').addEventListener('click', (e) => {
+    if (e.target.id === 'allmin-mask') close();
+  });
+  $('#allmin-copy').addEventListener('click', () => copyWhisper(order, t));
 }
 
 // ---------------- 字段说明气泡 ----------------
@@ -855,6 +914,7 @@ function renderDetail() {
           ${t.kind === 'auction' ? `<span class="pill">${esc(t.weaponSlug || '')}</span>` : `<span class="pill gray mono">${esc(t.slug || '')}</span>`}
           ${snap.matched ? '<span class="pill gold">● 达标中</span>' : ''}
           ${v.lastError ? `<span class="pill red">最近一次失败：${esc(v.lastError.kind || '')}</span>` : ''}
+          ${snap.allBest ? `<button type="button" class="pill warn" id="btn-allmin" title="${isEN() ? 'Includes offline sellers — usually not tradable right away' : '含离线玩家，可能无法立即成交'}">${isEN() ? 'Lowest' : '全网最低'} ${p(snap.allBest.price)}</button>` : ''}
         </div>
       </div>
       <div class="row gap8">
@@ -875,14 +935,18 @@ function renderDetail() {
 
     <div class="panel">
       <div class="panel-head">
-        <span>48 小时成交中位价</span>
+        <span>成交走势</span>
         <span class="row gap8">
-          <span class="note">${t.kind === 'auction' ? '拍卖不支持历史统计' : '来自官方 statistics 接口'}</span>
+          <div class="seg compact" id="chart-seg">
+            <button type="button" class="${S.chartRange === '90' ? '' : 'on'}" data-range="48">48 小时</button>
+            <button type="button" class="${S.chartRange === '90' ? 'on' : ''}" data-range="90">90 天</button>
+          </div>
           ${t.slug ? '<button class="btn sm ghost" id="btn-load-stats">加载走势</button>' : ''}
         </span>
       </div>
       <div class="panel-body">
         <div class="chart-box" id="chart-box">${chartPlaceholder(v)}</div>
+        <div class="note" id="chart-note">${chartNote(v)}</div>
       </div>
     </div>
 
@@ -908,12 +972,61 @@ function renderDetail() {
   bindChartHover($('#chart-box', pane));
 }
 
+/** 简单分位：数组里有多少比例 ≤ x（渲染层用，core 侧的完整版在 domain/stats.js） */
+function pctOf(values, x) {
+  const arr = (values || []).filter((n) => typeof n === 'number' && Number.isFinite(n));
+  if (!arr.length || !Number.isFinite(x)) return null;
+  return Math.round((arr.filter((n) => n <= x).length / arr.length) * 100);
+}
+
+function chartSeries(v) {
+  const st = v.target.slug ? S.statsCache.get(v.target.slug) : null;
+  if (!st) return null;
+  return S.chartRange === '90' ? st.d90 || [] : st.h48 || [];
+}
+
 function chartPlaceholder(v) {
-  const cached = v.target.slug ? S.statsCache.get(v.target.slug) : null;
-  // 缓存里存的是 { h48, d90 }，走势图默认画 48 小时那条
-  if (cached) return bigChart(cached.h48 || [], v.target.targetPrice);
   if (!v.target.slug) return '<div class="empty fill"><p>拍卖数据无历史统计</p></div>';
-  return '<div class="empty fill"><p>点击右上角「加载走势」获取 48 小时成交价曲线</p></div>';
+  const series = chartSeries(v);
+  if (!series) return '<div class="empty fill"><p>点击右上角「加载走势」获取成交价曲线</p></div>';
+  if (!series.length) {
+    const msg = S.chartRange === '90'
+      ? (isEN() ? 'No trades in the last 90 days' : '近 90 天无成交记录')
+      : (isEN() ? 'No trades in the last 48 hours' : '近 48 小时无成交记录');
+    return `<div class="empty fill"><p>${msg}</p></div>`;
+  }
+  return bigChart(series, v.target.targetPrice);
+}
+
+/** 走势图下方的分位摘要：把「当前价」放进 90 天分布里，回答「这价算高还是低」 */
+function chartNote(v) {
+  const st = v.target.slug ? S.statsCache.get(v.target.slug) : null;
+  if (!st) return '';
+  const sum = st.summary || {};
+  const days = (st.d90 || []).filter((d) => d.volume > 0 && d.min != null);
+  const en = isEN();
+  if (!days.length) {
+    return en ? 'No trades in 90 days — trend is indicative only' : '近 90 天无成交记录，走势仅供参考';
+  }
+  const cur = v.snapshot && v.snapshot.bestPrice;
+  const parts = [];
+  const pct = cur != null ? pctOf(days.map((d) => d.min), cur) : null;
+  if (pct != null) parts.push(en ? `Current price sits at ${pct}th percentile of 90 days` : `当前价处于近 90 天 ${pct}% 分位`);
+  if (sum.low != null && sum.high != null) {
+    parts.push(en ? `range ${Math.round(sum.low)}–${Math.round(sum.high)}p` : `区间 ${Math.round(sum.low)}–${Math.round(sum.high)}p`);
+  }
+  if (sum.dailyVolume) parts.push(en ? `${sum.dailyVolume} trades/day` : `日均成交 ${sum.dailyVolume} 单`);
+  return parts.join(' · ');
+}
+
+/** 重画走势图与摘要（切换周期、加载完成都走这里） */
+function paintChart(v, pane) {
+  const box = $('#chart-box', pane);
+  if (!box) return;
+  box.innerHTML = chartPlaceholder(v);
+  if (box.querySelector('svg')) bindChartHover(box);
+  const note = $('#chart-note', pane);
+  if (note) note.textContent = chartNote(v);
 }
 
 function attrName(slug) {
@@ -960,6 +1073,12 @@ function bindDetail(v) {
   const pane = $('#pane-detail');
   // 用 onclick 覆盖而不是 addEventListener，避免每次重渲染后监听器叠加
   pane.onclick = (e) => {
+    const all = e.target.closest('#btn-allmin');
+    if (all) {
+      const a = v.snapshot && v.snapshot.allBest;
+      if (a && a.order) showAllBest(a.order, v.target);
+      return;
+    }
     const btn = e.target.closest('.copy-row');
     if (!btn) return;
     const order = (v.snapshot?.top || []).find((o) => o.id === btn.dataset.oid);
@@ -1010,8 +1129,7 @@ function bindDetail(v) {
       try {
         const stats = await api.itemStats(slug);
         S.statsCache.set(slug, stats);
-        $('#chart-box', pane).innerHTML = bigChart(stats.h48 || [], v.target.targetPrice);
-        bindChartHover($('#chart-box', pane));
+        paintChart(v, pane);
         loadStats.textContent = '刷新走势';
       } catch (e) {
         toast('加载失败', e.message + (e.advice ? `\n${e.advice}` : ''), 'err');
@@ -1019,6 +1137,22 @@ function bindDetail(v) {
       } finally {
         loadStats.disabled = false;
       }
+    });
+  }
+
+  // 48 小时 / 90 天 切换：两套数据同一次请求就已经拿到，切换纯本地，不再发请求
+  const chartSeg = $('#chart-seg', pane);
+  if (chartSeg) {
+    syncSegInk(chartSeg, false);
+    chartSeg.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-range]');
+      if (!btn) return;
+      const range = btn.dataset.range === '90' ? '90' : '48';
+      if (range === S.chartRange) return;
+      S.chartRange = range;
+      chartSeg.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.range === range));
+      syncSegInk(chartSeg, true);
+      paintChart(v, pane);
     });
   }
 }
@@ -1257,24 +1391,6 @@ function renderSettings() {
               <span class="switch-label">启用 WebSocket 实时补位</span>
             </label>
             <div class="hint">断线不影响轮询，只是少了秒级提醒</div>
-          </div>
-        </div>
-        <div class="form-row-3">
-          <div class="field">
-            <label>私聊文案语言</label>
-            <select id="s-whisper-lang">
-              <option value="auto" ${(cfg.ui?.whisperLang || 'auto') === 'auto' ? 'selected' : ''}>跟随界面语言</option>
-              <option value="zh" ${cfg.ui?.whisperLang === 'zh' ? 'selected' : ''}>中文</option>
-              <option value="en" ${cfg.ui?.whisperLang === 'en' ? 'selected' : ''}>English</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>文案预览（中）</label>
-            <input type="text" value="/w 玩家 你好! 我想以100白金购买: &quot;物品 (等级 5)&quot;。" disabled/>
-          </div>
-          <div class="field">
-            <label>文案预览（英）</label>
-            <input type="text" value="/w player Hi! I want to buy: &quot;Item (rank 5)&quot; for 100 platinum." disabled/>
           </div>
         </div>
       </div>
@@ -1716,7 +1832,6 @@ async function saveSettingsFromForm() {
       },
     },
     ui: {
-      whisperLang: $('#s-whisper-lang')?.value || 'auto',
       language: $('#s-ui-lang')?.value || 'zh',
       theme: $('#s-theme')?.value || 'auto',
       hotkey: {
@@ -1843,6 +1958,7 @@ function openAddModal(existing) {
     form: initForm,
     parts: [],
     partsFor: '',
+    rec: null, // 推荐目标价状态：{status, lo, hi, single, title}
     drafts: {
       market: initKind === 'market' ? draft('market', initSelected, initForm, t ? dn(t) : '') : draft('market'),
       auction: initKind === 'auction' ? draft('auction', initSelected, initForm, t ? dn(t) : '') : draft('auction'),
@@ -1854,8 +1970,10 @@ function openAddModal(existing) {
     pos: null,
   };
   drawModal();
-  if (t) loadParts();
-  else setTimeout(() => $('#m-search')?.focus(), 60);
+  if (t) {
+    loadParts();
+    if (t.kind === 'market' && t.slug) loadRecommend({ slug: t.slug });
+  } else setTimeout(() => $('#m-search')?.focus(), 60);
 }
 
 /** 拉套装的散件（列表接口不返回 setParts，只能按需问详情接口） */
@@ -1879,6 +1997,85 @@ async function loadParts() {
       bindRuleForm();
     }
   } catch (_) {}
+}
+
+/**
+ * 推荐区间按钮：状态挂在 S.modal.rec 上。
+ * loadParts 拿到散件后会重建整张表单，状态只存 DOM 里会被冲掉。
+ */
+function recButtonHtml() {
+  const m = S.modal;
+  if (!m || m.kind === 'auction') return '<button type="button" class="pill gold" id="f-price-rec" hidden></button>';
+  const r = m.rec;
+  if (!r) return '<button type="button" class="pill gold" id="f-price-rec" hidden></button>';
+  const en = isEN();
+  const label =
+    r.status === 'loading' ? (en ? 'Calculating…' : '测算中…')
+      : r.status === 'ok'
+        ? (r.single
+          ? (en ? `Suggest ${r.hi}p` : `建议 ${r.hi}p`)
+          : (en ? `Suggest ${r.lo}–${r.hi}p` : `推荐 ${r.lo}–${r.hi}p`))
+        : (en ? 'Not enough data' : '样本不足');
+  const tip = r.status === 'ok'
+    ? (en ? 'Derived from 90-day trade history; click to fill in the upper bound' : '根据近 90 天成交价测算，点击填入上限')
+    : (r.title || '');
+  const dis = r.status === 'ok' ? '' : 'disabled';
+  return `<button type="button" class="pill gold" id="f-price-rec" ${dis} title="${esc(tip)}">${esc(label)}</button>`;
+}
+
+function bindRecButton() {
+  const btn = $('#f-price-rec');
+  if (!btn || btn.disabled) return;
+  btn.onclick = () => {
+    const r = S.modal && S.modal.rec;
+    const input = $('#f-price');
+    if (!r || r.status !== 'ok' || !input) return;
+    input.value = String(r.hi);
+    syncForm();
+  };
+}
+
+function renderRecButton() {
+  const old = $('#f-price-rec');
+  if (!old) return;
+  old.outerHTML = recButtonHtml();
+  bindRecButton();
+}
+
+/**
+ * 选中物品后立刻测算推荐目标价。
+ * 数据是「即时行情 + 90 天日线」，两个请求都走正常限速队列，约 1 秒。
+ * 只做参考：不自动改用户已填的值，点按钮才填入上限。
+ */
+async function loadRecommend(c) {
+  const m = S.modal;
+  if (!m || !c || !c.slug || m.kind === 'auction') return;
+  m.rec = { status: 'loading' };
+  renderRecButton();
+  try {
+    const q = await api.itemQuote(c.slug);
+    if (S.modal !== m || !m.selected || m.selected.slug !== c.slug) return;
+    const band = q.band || {};
+    const en = isEN();
+    if (band.locked) {
+      m.rec = {
+        status: 'insufficient',
+        title: band.reason === 'insufficient'
+          ? (en
+            ? `Only ${band.samples || 0} trading days in 90 days (avg ${band.v7 || 0}/day) — too few to estimate`
+            : `近 90 天只有 ${band.samples || 0} 天有成交（日均 ${band.v7 || 0} 单），样本太少`)
+          : (en ? 'Riven auctions have no trade statistics' : '紫卡拍卖没有历史成交统计'),
+      };
+    } else {
+      m.rec = { status: 'ok', lo: band.lo, hi: band.hi, single: band.single };
+    }
+    renderRecButton();
+  } catch (_) {
+    if (S.modal === m) {
+      m.rec = null;
+      renderRecButton();
+    }
+  }
 }
 
 function renderPartsBlock() {
@@ -2144,6 +2341,7 @@ function bindModalBody() {
       bindRuleForm();
       $('#m-save').disabled = false;
       loadParts();
+      loadRecommend(c);
     });
 
     // 官方图缺失/加载失败时换成随包占位图；占位图也失败才隐藏（error 不冒泡，用捕获阶段接）
@@ -2425,7 +2623,10 @@ function renderRuleForm() {
     <div class="form-row-3">
       <div class="field">
         <label>目标价 (白金)</label>
-        <input type="number" id="f-price" min="1" step="1" value="${f.targetPrice || 50}"/>
+        <div class="price-row">
+          <input type="number" id="f-price" min="1" step="1" value="${f.targetPrice || 50}"/>
+          ${recButtonHtml()}
+        </div>
         <div class="hint" id="hint-price">${isAuction ? '一口价不高于此值即通知' : f.direction === 'sell' ? '收购价 ≥ 此值即通知' : '出售价 ≤ 此值即通知'}</div>
       </div>
       <div class="field">
@@ -2543,6 +2744,7 @@ function bindRuleForm() {
   const m = S.modal;
   if (!m) return;
   const f = m.form;
+  bindRecButton();
 
   // 切换分段控件只改状态与样式，绝不重建表单 —— 重建会丢掉用户已填的数字
   const seg = (id, key, after) => {

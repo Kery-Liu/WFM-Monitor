@@ -477,6 +477,10 @@ td.price { color: var(--teal); font-weight: 600; }
 .field { margin-bottom: var(--s-5); }
 .field > label { display: block; font-size: var(--fs-sm); color: var(--text-2); margin-bottom: var(--s-2); }
 .field .hint { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--s-1); line-height: 1.65; }
+/* 目标价输入框 + 右侧「推荐区间」按钮：按钮宽度随文案变，输入框吃掉剩余空间 */
+.price-row { display: flex; align-items: center; gap: var(--s-2); }
+.price-row input { flex: 1 1 auto; min-width: 0; }
+.price-row .pill[hidden] { display: none; }
 input[type="text"], input[type="number"], input[type="password"], select, textarea {
   width: 100%; background: var(--input-bg); border: 1px solid var(--line); color: var(--text);
   padding: 8px 11px; border-radius: var(--r-sm); font: inherit; font-size: var(--fs-md); outline: none;
@@ -521,6 +525,8 @@ select { cursor: pointer; }
   pointer-events: none;
 }
 .seg.no-ink-anim .seg-ink { transition: none; }
+/* 面板标题里的紧凑分段控件：文案短（48 小时 / 90 天），不需要 78px 的按钮下限 */
+.seg.compact button { min-width: 0; flex: 0 0 auto; padding: 5px 9px; font-size: var(--fs-xs); }
 
 /* 开关只在「轨道 + 文字」这块区域可点：inline-flex 收缩到内容宽度，
    否则 label 作为块级 flex 会撑满整行，点行尾空白也会误触 */

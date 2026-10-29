@@ -19,10 +19,11 @@ const { MarketSource } = require('./sources/market');
 const { AuctionSource } = require('./sources/auction');
 const { OrderStream, WS_URL } = require('./sources/stream');
 const { Resolver } = require('./domain/resolver');
+const { summarize90, recommendBand } = require('./domain/stats');
 const { Scheduler } = require('./engine/scheduler');
 const { Notifier } = require('./notify');
 const { EmailControl } = require('./control');
-const { sanitizeTarget } = require('./domain/rules');
+const { sanitizeTarget, snapshotMarket } = require('./domain/rules');
 const { uid, fmtDuration } = require('./util');
 const { KINDS } = require('./errors');
 
@@ -181,6 +182,51 @@ class App extends EventEmitter {
     };
     this._detailCache.set(slug, { ts: Date.now(), data });
     return data;
+  }
+
+  /**
+   * 物品成交统计：48 小时 + 90 天
+   * 摘要（分位区间 / 日均成交量）在 core 侧算好，渲染层只负责展示，
+   * 避免在浏览器里再实现一遍分位计算。
+   */
+  async itemStats(slug) {
+    const data = await this.marketSource.fetchStats(slug);
+    return { ...data, summary: summarize90(data.d90) };
+  }
+
+  /**
+   * 新建监控时给「目标价」用的即时行情 + 推荐区间。
+   * 用户选中物品后马上调，所以这里要一次拿全：
+   *   cur   —— 仅游戏中最低卖价，是「现在就能买到」的锚
+   *   band  —— 推荐区间（算法在 domain/stats.js，纯函数）
+   * 两个请求会经过同一个限速队列，串行约 1 秒。
+   */
+  async itemQuote(slug) {
+    const [orders, stats] = await Promise.all([
+      this.marketSource.fetchOrders(slug),
+      this.marketSource.fetchStats(slug),
+    ]);
+    const snap = snapshotMarket(orders, {
+      kind: 'market',
+      direction: 'buy',
+      targetPrice: 0,
+      buyerFilter: 'ingame',
+      minQuantity: 1,
+    });
+    const summary = summarize90(stats.d90);
+    const band = recommendBand({
+      d90: stats.d90,
+      cur: snap.bestPrice,
+      v7: summary.dailyVolume,
+      kind: 'market',
+    });
+    return {
+      cur: snap.bestPrice,
+      total: snap.totalEligible,
+      allBest: snap.allBest ? snap.allBest.price : null,
+      summary,
+      band,
+    };
   }
 
   // ---------------- 目标管理 ----------------

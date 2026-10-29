@@ -46,7 +46,7 @@ const DEFAULTS = {
   ui: {
     compact: false,
     confirmOnDelete: true,
-    whisperLang: 'auto', // auto | en | zh —— 复制喊话时使用的语言
+    // 私聊文案语言不设开关：固定跟随对方（卖家/买家）在站内用的语言，见 app.js whisperLangFor()
     language: 'zh', // zh | en —— 整个界面与通知文案的语言
     theme: 'auto', // auto | dark | light —— auto 跟随系统，探测不到用 light
     // 全局快捷键：默认启用，开箱即可用 Ctrl/Cmd+Shift+F9 触发「全部检查」
@@ -97,17 +97,28 @@ class Config {
    * 老配置迁移
    * v1.0.0 的默认值是「快捷键关闭」，结果开箱时 Ctrl+Shift+F9 从没注册上；
    * v1.0.1 改为默认启用，这里把 v1 配置一次性打开（用户之后仍可手动关闭）。
+   * v1.2.0 起私聊文案语言固定跟随对方，老配置里的 whisperLang 直接丢弃。
    */
   _migrate(persisted) {
-    if ((Number(this.data.version) || 1) >= 2) return;
-    if (!this.data.ui || typeof this.data.ui !== 'object') this.data.ui = Config.defaults().ui;
-    const def = DEFAULTS.ui.hotkey;
-    const hk = this.data.ui.hotkey && typeof this.data.ui.hotkey === 'object' ? { ...this.data.ui.hotkey } : { ...def };
-    if (!hk.accelerator) hk.accelerator = def.accelerator;
-    hk.enabled = true;
-    this.data.ui.hotkey = hk;
-    this.data.version = 2;
-    if (persisted) {
+    let dirty = false;
+
+    if (this.data.ui && typeof this.data.ui === 'object' && 'whisperLang' in this.data.ui) {
+      delete this.data.ui.whisperLang;
+      dirty = true;
+    }
+
+    if ((Number(this.data.version) || 1) < 2) {
+      if (!this.data.ui || typeof this.data.ui !== 'object') this.data.ui = Config.defaults().ui;
+      const def = DEFAULTS.ui.hotkey;
+      const hk = this.data.ui.hotkey && typeof this.data.ui.hotkey === 'object' ? { ...this.data.ui.hotkey } : { ...def };
+      if (!hk.accelerator) hk.accelerator = def.accelerator;
+      hk.enabled = true;
+      this.data.ui.hotkey = hk;
+      this.data.version = 2;
+      dirty = true;
+    }
+
+    if (dirty && persisted) {
       try {
         this.save();
       } catch (_) {}

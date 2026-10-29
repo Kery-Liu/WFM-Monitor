@@ -311,11 +311,12 @@ function registerIpc() {
     'search:weapons': (_e, q) => core.searchWeapons(q),
     'search:attrs': () => core.listAttrs(),
     'items:detail': (_e, slug) => core.itemDetail(slug),
+    'items:quote': (_e, slug) => core.itemQuote(slug),
 
     'events:list': (_e, n) => core.events(n),
     'events:clear': () => core.clearEvents(),
 
-    'stats:item': (_e, slug) => core.marketSource.fetchStats(slug),
+    'stats:item': (_e, slug) => core.itemStats(slug),
   };
 
   for (const [channel, fn] of Object.entries(handlers)) {

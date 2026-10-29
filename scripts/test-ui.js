@@ -213,7 +213,8 @@ const SCRIPT = String.raw`(async () => {
   };
   ck('账号标签改为（发件人）', lblOf('s-smtp-user') === '账号（发件人）', lblOf('s-smtp-user'));
   ck('收件人只保留标签', lblOf('s-smtp-to') === '收件人', lblOf('s-smtp-to'));
-  ck('私聊语言/账号不再有感叹号', !document.getElementById('s-whisper-lang').closest('.field').querySelector('.info') && !document.getElementById('s-smtp-user').closest('.field').querySelector('.info'));
+  ck('账号不再有感叹号', !document.getElementById('s-smtp-user').closest('.field').querySelector('.info'));
+  ck('私聊文案语言设置已移除', !document.getElementById('s-whisper-lang') && !document.getElementById('s-ui-lang')?.closest('.field')?.querySelector('#s-whisper-lang'));
 
   // 弹窗里的说明同样转成图标
   openAddModal();

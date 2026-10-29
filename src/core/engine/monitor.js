@@ -374,6 +374,21 @@ class Monitor extends EventEmitter {
         if (o.reRolls != null) lines.push(`${L('洗练', 'Rolls')}: ${o.reRolls}${sep}${L('段位', 'MR')} ${o.mastery ?? '--'}`);
       }
     }
+
+    // 达标价如果不是全网最低，补一句「还有更低的，但大概率买不到」。
+    // 实测最便宜的挂单常来自离线号，不说清楚用户会白跑一趟。
+    if (snap.allBest && snap.allBest.order) {
+      const ab = snap.allBest;
+      const au = ab.order.user || {};
+      const ast = au.status ? ` (${statusText[au.status] || au.status})` : '';
+      const aup = ab.order.updatedAt ? `${sep}${L('最后更新', 'updated')} ${agoText(ab.order.updatedAt, en)}` : '';
+      lines.push(
+        en
+          ? `Also listed from ${fmt(ab.price)}${ast}${aup} — may not be tradable now`
+          : `另有全网最低 ${fmt(ab.price)}${ast}${aup}，可能无法立即交易`
+      );
+    }
+
     const cnt = snap.countAtTarget || 0;
     lines.push(
       en
@@ -414,6 +429,18 @@ class Monitor extends EventEmitter {
       .map((a) => `${a.value > 0 ? '+' : ''}${a.value}% ${this._attrName(a.url_name)}`)
       .join(en ? ', ' : '，');
 
+    // 全网最低（含离线）单独一行，只在确实比达标价更低时出现
+    let allBestRow = '';
+    if (snap.allBest && snap.allBest.order) {
+      const ab = snap.allBest;
+      const st = statusText[ab.order.user?.status] || (en ? 'offline' : '离线');
+      allBestRow = row(
+        L('全网最低', 'Also listed'),
+        `<span style="color:#a35d05;font-weight:600">${fmt(ab.price)}</span>`
+          + `<span style="color:#7b8794;font-size:12px"> · ${escapeHtml(st)} · ${escapeHtml(agoText(ab.order.updatedAt, en))}${en ? ' · may not be tradable now' : ' · 可能无法立即交易'}</span>`
+      );
+    }
+
     const rows = [
       row(L('监控类型', 'Type'), escapeHtml(kindText)),
       row(L('目标价', 'Target'), `${t.direction === 'sell' && t.kind !== 'auction' ? '≥' : '≤'} ${fmt(snap.targetPrice)}`),
@@ -423,6 +450,7 @@ class Monitor extends EventEmitter {
       t.kind === 'market' && o.quantity ? row(L('数量', 'Qty'), `${o.quantity}${o.perTrade ? ` / ${L('单笔', 'per trade')} ${o.perTrade}` : ''}`) : '',
       t.kind === 'auction' && attrs ? row(L('词条', 'Stats'), escapeHtml(attrs)) : '',
       t.kind === 'auction' && o.reRolls != null ? row(L('洗练 / 段位', 'Rolls / MR'), `${o.reRolls} / ${o.mastery ?? '--'}`) : '',
+      allBestRow,
       row(L('达标挂单', 'Matched'), `${(snap.countAtTarget || 0) > 99 ? '99+' : snap.countAtTarget}${en ? '' : ' 条'}`),
       row(L('时间', 'Time'), new Date(snap.ts).toLocaleString(en ? 'en-US' : 'zh-CN')),
     ].filter(Boolean).join('');
@@ -482,6 +510,19 @@ function escapeHtml(v) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+/** ISO 时间 → 「3 小时前」，用于说明挂单的新鲜度 */
+function agoText(iso, en) {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return en ? 'unknown' : '未知';
+  const mins = Math.max(0, Math.round((Date.now() - t) / 60000));
+  if (mins < 1) return en ? 'just now' : '刚刚';
+  if (mins < 60) return en ? `${mins}m ago` : `${mins} 分钟前`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return en ? `${hours}h ago` : `${hours} 小时前`;
+  const days = Math.round(hours / 24);
+  return en ? `${days}d ago` : `${days} 天前`;
 }
 
 module.exports = { Monitor, fmtDuration };

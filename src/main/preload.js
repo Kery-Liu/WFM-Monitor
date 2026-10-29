@@ -43,6 +43,7 @@ contextBridge.exposeInMainWorld('wfm', {
   searchWeapons: (q) => invoke('search:weapons', q),
   listAttrs: () => invoke('search:attrs'),
   itemDetail: (slug) => invoke('items:detail', slug),
+  itemQuote: (slug) => invoke('items:quote', slug),
 
   events: (n) => invoke('events:list', n),
   clearEvents: () => invoke('events:clear'),
