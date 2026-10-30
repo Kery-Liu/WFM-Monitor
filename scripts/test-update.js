@@ -142,6 +142,12 @@ const tmp = (tag) => fs.mkdtempSync(path.join(os.tmpdir(), `wfm-${tag}-`));
   check('大版本优先于小版本', compareVersion('2.0.0', '1.99.99') === 1);
   check('相同版本返回 0', compareVersion('1.2.0', '1.2.0') === 0);
 
+  // 分支名写错不会报错，只会让备源永远 404，所以钉一条断言
+  const { SOURCES } = require('../src/core/update');
+  check('更新源共两个（Gitee + GitHub）', SOURCES.length === 2, SOURCES.length);
+  check('Gitee 源指向 master 分支', /gitee\.com\/.+\/raw\/master\/update\.json$/.test(SOURCES[0]), SOURCES[0]);
+  check('GitHub 源指向 master 分支（不是 main）', /githubusercontent\.com\/.+\/master\/update\.json$/.test(SOURCES[1]), SOURCES[1]);
+
   // ---------- 7. 调度默认值与档位推导 ----------
   const { inferTier, sanitizeTarget } = require('../src/core/domain/rules');
   check('30 秒以内推为高档', inferTier(15) === 'high' && inferTier(30) === 'high');

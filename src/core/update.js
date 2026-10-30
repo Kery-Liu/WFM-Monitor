@@ -17,7 +17,9 @@ const zlib = require('zlib');
 
 const SOURCES = [
   'https://gitee.com/Kery1126/WFM-Monitor/raw/master/update.json',
-  'https://raw.githubusercontent.com/Kery-Liu/WFM-Monitor/main/update.json',
+  // 注意分支名是 master，不是 main。写成 main 会一直 404，
+  // 而失败分支只会在设置页显示「暂时无法检查更新」，不会报错，很容易一直没发现。
+  'https://raw.githubusercontent.com/Kery-Liu/WFM-Monitor/master/update.json',
 ];
 
 const TIMEOUT_MS = 3000;
