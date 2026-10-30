@@ -1,6 +1,6 @@
 {
   "version": "1.2.0",
-  "url": "https://github.com/Kery-Liu/WFM-Monitor/releases/download/v1.2.0/WFM-Monitor-Setup-1.2.0.exe",
+  "url": "https://gitee.com/Kery1126/WFM-Monitor/releases/download/v1.2.0/WFM-Monitor-Setup-1.2.0.exe",
   "notes": "自动调度与带宽预算、90 天价格分位、推荐目标价、散件对比窗口、私聊文案跟随对方语言、检查更新",
   "force": false
 }
