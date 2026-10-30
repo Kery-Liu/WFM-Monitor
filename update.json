@@ -1,6 +1,6 @@
 {
-  "version": "1.2.0",
-  "url": "https://gitee.com/Kery1126/WFM-Monitor/releases/download/v1.2.0/WFM-Monitor-Setup-1.2.0.exe",
-  "notes": "自动调度与带宽预算、90 天价格分位、推荐目标价、散件对比窗口、私聊文案跟随对方语言、检查更新",
+  "version": "1.2.1",
+  "url": "https://gitee.com/Kery1126/WFM-Monitor/releases/download/v1.2.1/WFM-Monitor-Setup-1.2.1.exe",
+  "notes": "调度算法重写：按优先级权重分享配额，预算利用率恒定 85%，间隔随目标数量自动伸缩；容量记忆持久化，重启不再冷启动校准；修复优先级分段控件错位",
   "force": false
 }
