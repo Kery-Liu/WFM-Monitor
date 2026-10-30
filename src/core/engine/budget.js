@@ -1,192 +1,110 @@
 'use strict';
 
 /**
- * 引擎层 - 全局请求预算
+ * 引擎层 - 全局配额分配器（proportional fair share）
  *
- * 为什么需要这一层：
- * 调度从「每个目标固定检查间隔」改成「按优先级分档」之后，用户可以把所有目标
- * 都设成高档，请求量会直接撞天花板。这一层在中间做闸门——超了就按优先级
- * 降级低档目标，而不是让限速器把所有人一起卡住。
+ * 设计目标（v1.3.0）：
+ * 旧版是「固定档位 + 超了才封顶」——目标少时预算大量空转（4 个目标只用 20%），
+ * 目标多时触发拒绝→降级→恢复的振荡。这一版反过来：
+ * 先算「这一分钟能跑多少次」，再按优先级权重把配额分给每个目标，
+ * 间隔是从配额**推出来的**，稳态天然贴着预算跑，不存在超支，也就不需要降级。
  *
- * 为什么预算按「带宽」而不是按「限速」：
- * 限速器只约束「每秒发几次」（默认 2 次/秒），但实测热门物品单次订单响应
- * gzip 后仍有 35–113 KB。10 个目标按 20 秒一轮就是 126 MB/小时。
- * 频次完全没超，流量已经离谱。所以容量按「每分钟能吃多少 KB」反推。
+ *   可用配额 = 容量 × 85%        （容量 = min(带宽可承受, 官方限速)，gzip 校准后自动变大）
+ *   权重     = 档位权重 × 状态系数
+ *                档位：高 4 / 中 2 / 低 1（只代表分蛋糕的比重，不再是秒数）
+ *                已达标 ×1/3（退位，份额让给未达标的）
+ *                距目标 5% 内 ×2（临门一脚盯紧）
+ *   间隔     = 60000 × 总权重 ÷ (配额 × 自己的权重)，限幅 [10s, 1800s]
  *
- * 纯状态机，不碰网络、不碰配置对象，可直接单测（见 scripts/test-budget.js）。
+ * 10s 下限：目标太少时 85% 利用率会要求秒级轮询，价格不会秒级变，
+ * 纯骚扰官方 API。下限顶住时利用率上不去是健康保护，不是缺陷。
+ * 85% 而不是 100%：留配额给手动检查 / 散件对比 / 物品库刷新这些插队请求。
+ *
+ * 纯函数式重算，不碰网络、不碰时间，可直接单测（scripts/test-budget.js）。
  */
 
-const TIER_RANK = { high: 0, normal: 1, low: 2 };
-const TIER_MS = { high: 20000, normal: 60000, low: 180000 };
-const LEVEL_FACTOR = [1, 2, 3];
+const TIER_WEIGHT = { high: 4, normal: 2, low: 1 };
+const UTIL = 0.85; // 稳态预算利用率目标
+const MIN_MS = 10 * 1000;
+const MAX_MS = 1800 * 1000;
+const FALLBACK_MS = 60 * 1000;
 
-class BudgetAllocator {
-  constructor({ windowMs = 60000 } = {}) {
-    this.windowMs = windowMs;
-    this.enabled = true;
-    this.capacity = 20;
-    this.tokens = 20;
-    this.lastRefillAt = Date.now();
-    this.windowStartAt = Date.now();
-    this.tiers = new Map(); // targetId -> 'high' | 'normal' | 'low'
-    this.states = new Map(); // targetId -> { level, skips, lastGrantAt, lastSkipAt }
-    this.stats = { granted: 0, denied: 0, manual: 0 };
+class FairShare {
+  constructor() {
+    this.capacity = 20; // 每分钟允许的检查次数（由 configure 推导）
+    this.intervals = new Map(); // targetId -> 分配到的间隔 ms
+    this.lastPlan = null; // 最近一次重算的快照，供 UI 展示
   }
 
-  /**
-   * 容量 = min(带宽可承受次数, 限速可承受次数)，并有下限保护。
-   * avgKbPerCheck 由调用方用 client.stats.bytes / ok 做 EWMA 送进来，
-   * 所以 gzip 生效后这个值会自己掉到 ~70，容量自动翻倍，无需另写适配。
-   */
-  configure({ enabled, bandwidthKbPerMin, avgKbPerCheck, minChecksPerMin, minRequestIntervalMs } = {}) {
-    if (enabled != null) this.enabled = !!enabled;
+  /** 容量推导与旧版一致：min(带宽, 限速)，下限保护。返回容量供测试断言 */
+  configure({ bandwidthKbPerMin, avgKbPerCheck, minChecksPerMin, minRequestIntervalMs } = {}) {
     const rateCap = Math.floor(60000 / Math.max(340, Number(minRequestIntervalMs) || 500));
     const bwCap = Math.floor((Number(bandwidthKbPerMin) || 6000) / Math.max(20, Number(avgKbPerCheck) || 300));
-    const next = Math.max(Number(minChecksPerMin) || 6, Math.min(bwCap, rateCap));
-    if (next !== this.capacity) {
-      this.capacity = next;
-      this.tokens = Math.min(this.tokens, next);
-    }
+    this.capacity = Math.max(Number(minChecksPerMin) || 6, Math.min(bwCap, rateCap));
     return this.capacity;
   }
 
-  tierOf(id) {
-    return this.tiers.get(id) || 'normal';
+  /**
+   * 全量重算。任何「能改变间隔」的事发生后调用：目标增删、达标状态翻转、
+   * 容量校准（30s 周期）、设置变更。重算不重排已排定的 nextRunAt——
+   * 间隔在下一次调度时自然生效，避免所有目标同时跳变。
+   *
+   * @param {Array} list  [{ id, priority, matched, near }]
+   */
+  recompute(list) {
+    const active = (list || []).filter((t) => t && t.id);
+    if (!active.length) {
+      this.intervals.clear();
+      this.lastPlan = { capacity: this.capacity, quota: 0, totalWeight: 0, items: [] };
+      return this.lastPlan;
+    }
+    const weightOf = (t) => {
+      const tier = TIER_WEIGHT[t.priority] || TIER_WEIGHT.normal;
+      const state = t.matched ? 1 / 3 : t.near ? 2 : 1;
+      return tier * state;
+    };
+    const ws = active.map(weightOf);
+    const totalW = ws.reduce((a, b) => a + b, 0) || 1;
+    const quota = this.capacity * UTIL; // 每分钟实际打算跑的次数
+    const items = [];
+    active.forEach((t, i) => {
+      const ms = clamp((60000 * totalW) / (quota * ws[i]), MIN_MS, MAX_MS);
+      this.intervals.set(t.id, ms);
+      items.push({ id: t.id, priority: t.priority, weight: round2(ws[i]), intervalSec: Math.round(ms / 1000) });
+    });
+    this.lastPlan = { capacity: this.capacity, quota: round2(quota), totalWeight: round2(totalW), items };
+    return this.lastPlan;
   }
 
-  setTier(id, tier) {
-    this.tiers.set(id, TIER_RANK[tier] != null ? tier : 'normal');
+  /** 单目标间隔。未参与过重算的目标（刚添加）回退 60s，等下一轮重算 */
+  intervalOf(id) {
+    return this.intervals.get(id) || FALLBACK_MS;
   }
 
   remove(id) {
-    this.tiers.delete(id);
-    this.states.delete(id);
+    this.intervals.delete(id);
   }
 
-  _st(id) {
-    let s = this.states.get(id);
-    if (!s) {
-      s = { level: 0, skips: 0, lastGrantAt: 0, lastSkipAt: 0 };
-      this.states.set(id, s);
-    }
-    return s;
-  }
-
-  levelOf(id) {
-    return this._st(id).level;
-  }
-
-  factorOf(id) {
-    return LEVEL_FACTOR[this._st(id).level] || 1;
-  }
-
-  baseMsOf(id) {
-    return TIER_MS[this.tierOf(id)] || TIER_MS.normal;
-  }
-
-  /** 逾期程度归一化：同一个目标的等待时间除以它的基准间隔，越久越该跑 */
-  _overdueNorm(m, now) {
-    const base = this.baseMsOf(m.id);
-    return (now - (m.nextRunAt || now)) / Math.max(1000, base);
-  }
-
-  _refill(now) {
-    const elapsed = now - this.lastRefillAt;
-    if (elapsed > 0) {
-      this.tokens = Math.min(this.capacity, this.tokens + (elapsed / this.windowMs) * this.capacity);
-      this.lastRefillAt = now;
-    }
-    // 跨窗口结算：上一窗口一次都没被拒（说明不紧张）才回落一级，防止来回振荡
-    if (now - this.windowStartAt >= this.windowMs) {
-      const quiet = (this._windowDenied || 0) === 0;
-      if (quiet) {
-        for (const st of this.states.values()) {
-          if (st.skips === 0) st.level = Math.max(0, st.level - 1);
-        }
-      }
-      for (const st of this.states.values()) st.skips = 0;
-      this._windowDenied = 0;
-      this.windowStartAt = now;
-    }
-  }
-
-  noteDenied(id, now) {
-    this.stats.denied += 1;
-    this._windowDenied = (this._windowDenied || 0) + 1;
-    const st = this._st(id);
-    st.skips += 1;
-    st.lastSkipAt = now;
-    // 连续被跳过才降级：一次被挤掉可能只是瞬时的并发占位
-    if (st.skips >= 5) st.level = 2;
-    else if (st.skips >= 2) st.level = Math.max(st.level, 1);
-  }
-
-  noteGranted(id, now) {
-    const st = this._st(id);
-    st.lastGrantAt = now;
-    st.skips = 0;
-  }
-
-  /**
-   * 从到期队列里挑出这一轮真正要跑的目标。
-   * 手动触发（forceRun）不校验预算，但会计数，这样设置页显示的是真实用量。
-   */
-  pick(due, { now = Date.now(), slots = 1 } = {}) {
-    const limit = Math.max(0, slots);
-    if (!this.enabled) return due.slice(0, limit);
-    this._refill(now);
-
-    const manual = due.filter((m) => m.forceRun);
-    const rest = due.filter((m) => !m.forceRun);
-    rest.sort((a, b) => {
-      const ra = TIER_RANK[this.tierOf(a.id)];
-      const rb = TIER_RANK[this.tierOf(b.id)];
-      if (ra !== rb) return ra - rb;
-      return (
-        this._overdueNorm(b, now) - this._overdueNorm(a, now) ||
-        (a.failures || 0) - (b.failures || 0) ||
-        (a.nextRunAt || 0) - (b.nextRunAt || 0)
-      );
-    });
-
-    const out = [];
-    let left = limit;
-    for (const m of manual.concat(rest)) {
-      if (left <= 0) {
-        if (!m.forceRun) this.noteDenied(m.id, now);
-        continue;
-      }
-      if (!m.forceRun) {
-        if (this.tokens < 1) {
-          this.noteDenied(m.id, now);
-          continue;
-        }
-        this.tokens -= 1;
-        this.stats.granted += 1;
-      } else {
-        this.stats.manual += 1;
-      }
-      this.noteGranted(m.id, now);
-      out.push(m);
-      left -= 1;
-    }
-    return out;
-  }
-
-  snapshot() {
-    const used = Math.max(0, this.capacity - this.tokens);
-    const degraded = [];
-    for (const [id, st] of this.states) {
-      if (st.level > 0) degraded.push({ id, level: st.level, factor: LEVEL_FACTOR[st.level] });
-    }
+  /** 供设置页显示：容量 / 计划用量 / 实际利用率 */
+  snapshot(actualPerMin) {
+    const plan = this.lastPlan || { capacity: this.capacity, quota: 0, totalWeight: 0, items: [] };
+    const plannedPerMin = plan.items.reduce((a, i) => a + 60000 / (i.intervalSec * 1000), 0);
     return {
-      enabled: this.enabled,
       capacity: this.capacity,
-      used: Math.round(used),
-      utilization: this.capacity ? +(used / this.capacity).toFixed(2) : 0,
-      degraded,
+      quota: plan.quota,
+      plannedPerMin: round2(plannedPerMin),
+      utilization: plan.capacity ? round2(Math.min(1, (Number(actualPerMin) || plan.quota) / plan.capacity)) : 0,
+      items: plan.items,
     };
   }
 }
 
-module.exports = { BudgetAllocator, TIER_MS, TIER_RANK, LEVEL_FACTOR };
+function clamp(v, lo, hi) {
+  return Math.min(hi, Math.max(lo, v));
+}
+
+function round2(v) {
+  return Math.round(v * 100) / 100;
+}
+
+module.exports = { FairShare, TIER_WEIGHT, UTIL, MIN_MS, MAX_MS };

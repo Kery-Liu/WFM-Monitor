@@ -37,7 +37,7 @@ class Monitor extends EventEmitter {
     this.notifyCount = 0;
     this.busy = false;
     this.forceRun = false;
-    this.budgetLevel = 0; // 0/1/2 —— 被全局预算降级的档数，由 Scheduler 每轮写入
+    this.assignedMs = 0; // v1.3.0：FairShare 分配的间隔，由 Scheduler 重算后写入
     this.rawCache = [];
     this.rawCacheAt = 0;
   }
@@ -60,33 +60,36 @@ class Monitor extends EventEmitter {
     return !!(s && s.auto);
   }
 
-  /** 基准间隔：自动模式看优先级档位，固定模式看用户填的秒数 */
+  /**
+   * v1.3.0：自动模式下间隔不再来自固定档位，而是 Scheduler 用配额分配器
+   * （FairShare.recompute）算出来后经 setAssignedInterval 写入。
+   * 状态（达标放慢 / 接近提速）已经折进权重里，不在这里再乘系数。
+   */
+  setAssignedInterval(ms) {
+    this.assignedMs = Math.max(1000, Number(ms) || 0) || 0;
+  }
+
   get baseIntervalMs() {
     if (!this.autoMode) return this.intervalMs;
-    const tiers = this.deps.config.get().schedule.tiers || {};
-    const sec = tiers[this.target.priority || 'normal'] || 60;
-    return Math.max(10, Number(sec) || 60) * 1000;
+    return this.assignedMs || this.intervalMs;
   }
 
-  /** 状态自适应：已达标就别高频盯了；快够到目标时盯紧一点 */
-  get stateFactor() {
-    if (this.state === 'trigger') return 3;
+  /** 展示用：是否已达标（间隔已放慢） */
+  get isMatched() {
+    return this.state === 'trigger';
+  }
+
+  /** 展示用：距目标价 5% 以内（间隔已提速） */
+  get isNearTarget() {
     const s = this.snapshot;
-    if (s && s.bestPrice != null && s.targetPrice > 0) {
-      const gap = Math.abs(s.delta == null ? s.targetPrice - s.bestPrice : s.delta);
-      if (gap / s.targetPrice <= 0.05) return 0.5;
-    }
-    return 1;
-  }
-
-  /** 预算降级系数，由 Scheduler 写入的 budgetLevel 决定 */
-  get budgetFactor() {
-    return [1, 2, 3][this.budgetLevel] || 1;
+    if (!s || s.bestPrice == null || !(s.targetPrice > 0)) return false;
+    if (this.state === 'trigger') return false;
+    const gap = Math.abs(s.delta == null ? s.targetPrice - s.bestPrice : s.delta);
+    return gap / s.targetPrice <= 0.05;
   }
 
   get effectiveIntervalMs() {
-    const v = Math.round(this.baseIntervalMs * this.stateFactor * this.budgetFactor);
-    return Math.min(3600000, Math.max(5000, v));
+    return Math.min(3600000, Math.max(5000, Math.round(this.baseIntervalMs)));
   }
 
   get label() {
@@ -183,8 +186,6 @@ class Monitor extends EventEmitter {
       else this.nextRunAt = 0;
     } catch (err) {
       this.failures += 1;
-      // 失败时清掉预算降级，避免「退避 × 降级」双重放大把间隔拉得太离谱
-      this.budgetLevel = 0;
       this.lastError = err.toJSON ? err.toJSON() : { message: err.message, kind: 'unknown' };
       this.state = 'error';
       this.deps.logger.warn('monitor', `${this.label} 检查失败(${this.lastError.kind || 'unknown'})：${err.message}`);
@@ -543,17 +544,15 @@ class Monitor extends EventEmitter {
       snapshot: this.snapshot,
       checkCount: this.checkCount,
       notifyCount: this.notifyCount,
-      // 调度状态：界面据此显示「档位 / 被预算降级 / 已达标放慢」，不允许静默降速
+      // 调度状态：v1.3.0 配额分配制。间隔由 FairShare 推导，达标/接近已折进权重
       schedule: {
         mode: this.autoMode ? 'auto' : 'fixed',
         tier: t.priority || 'normal',
         baseSec: Math.round(this.baseIntervalMs / 1000),
-        stateFactor: this.stateFactor,
-        budgetLevel: this.budgetLevel,
-        budgetFactor: this.budgetFactor,
         effectiveSec: Math.round(this.effectiveIntervalMs / 1000),
-        limited: this.budgetLevel > 0,
-        reason: this.budgetLevel > 0 ? 'budget' : this.stateFactor === 3 ? 'triggered' : this.stateFactor === 0.5 ? 'near' : null,
+        matched: this.isMatched,
+        near: this.isNearTarget,
+        reason: this.isMatched ? 'triggered' : this.isNearTarget ? 'near' : null,
       },
       durationMs,
       history: this.deps.store.getHistory(this.id).slice(-120),
