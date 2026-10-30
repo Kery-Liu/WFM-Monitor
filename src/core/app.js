@@ -90,6 +90,10 @@ class App extends EventEmitter {
 
   async shutdown() {
     try {
+      // 容量记忆：把本次会话校准收敛的容量落盘，下次启动省掉冷启动
+      try {
+        this.scheduler.persistBudget();
+      } catch (_) {}
       this.stream.stop();
       this.scheduler.stop();
       if (this.control) this.control.stop();

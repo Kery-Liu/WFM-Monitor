@@ -32,6 +32,11 @@ const DEFAULTS = {
       avgKbPerCheck: 300, // 初值，运行期由 client.stats 用 EWMA 校准
       calibrate: true,
       minChecksPerMin: 6, // 下限：目标少时别被预算误限
+      // 上次会话收敛的容量记忆（退出时由 scheduler.persistBudget 写入）：
+      // 下次启动用 storedCapacity − 10 保守起步，省掉冷启动校准。
+      // 0 = 无历史。恢复安全闸见 engine/budget.js 的 resumeCapacity。
+      storedCapacity: 0,
+      storedAvgKb: 0,
     },
   },
   network: {
@@ -176,6 +181,9 @@ class Config {
       sc.budget.bandwidthKbPerMin = clamp(Number(sc.budget.bandwidthKbPerMin) || 6000, 300, 60000);
       sc.budget.avgKbPerCheck = clamp(Number(sc.budget.avgKbPerCheck) || 300, 20, 800);
       sc.budget.minChecksPerMin = clamp(Number(sc.budget.minChecksPerMin) || 6, 1, 600);
+      // 容量记忆：出界一律按无历史处理（resumeCapacity 会拒绝并回归冷启动）
+      sc.budget.storedCapacity = Math.round(clamp(Number(sc.budget.storedCapacity) || 0, 0, 176));
+      sc.budget.storedAvgKb = Math.round(clamp(Number(sc.budget.storedAvgKb) || 0, 0, 800));
     }
   }
 
@@ -188,6 +196,22 @@ class Config {
     this._clamp();
     this.save();
     return this.data;
+  }
+
+  /**
+   * 容量记忆专用写入：绕过 patch/_afterSettingsChange（退出时不需要触发
+   * 调度重排，只需要落盘）。容量/体积的合法性由调用方（scheduler.persistBudget）把关。
+   */
+  setBudgetMemory(capacity, avgKb) {
+    if (!this.data.schedule || !this.data.schedule.budget) return false;
+    this.data.schedule.budget.storedCapacity = Math.round(clamp(Number(capacity) || 0, 0, 176));
+    this.data.schedule.budget.storedAvgKb = Math.round(clamp(Number(avgKb) || 0, 0, 800) * 10) / 10;
+    try {
+      this.save();
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   save() {

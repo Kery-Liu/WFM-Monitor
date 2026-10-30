@@ -28,6 +28,39 @@ const UTIL = 0.85; // 稳态预算利用率目标
 const MIN_MS = 10 * 1000;
 const MAX_MS = 1800 * 1000;
 const FALLBACK_MS = 60 * 1000;
+/**
+ * 容量硬顶：官方文档明示 3 req/s，340ms 间隔 = 176 次/分。
+ * 超过就是滥用级用法，会提高被 Cloudflare 盯上的概率——出界即 ban 的边界。
+ */
+const MAX_CAPACITY = 176;
+const MIN_CAPACITY = 20; // 持久化恢复的下限（用户约定）
+
+/**
+ * 持久化恢复：上次会话收敛的容量存在配置里，本次启动用「配置值 − 10」起步，
+ * 省掉 300→87 的冷启动校准过程（约一分钟）。
+ *
+ * 安全闸门（任何一条不过 → 返回 null，回归 20 冷启动）：
+ * - storedCapacity 出界（<20 或 >176）：说明上次数据异常
+ * - storedAvgKb 出界（<20 或 >800 KB）：同上
+ * - 配置值 −10 超过「按上次实测体积算出的带宽容量」或限速上限：
+ *   说明这套配置在当前网络条件下撑不住，宁可冷启动重新校准
+ *
+ * @returns {{ avgKb: number, capacity: number } | null} avgKb 供 EWMA 从保守值起步
+ */
+function resumeCapacity({ storedCapacity, storedAvgKb, bandwidthKbPerMin, minRequestIntervalMs } = {}) {
+  const stored = Number(storedCapacity) || 0;
+  const storedKb = Number(storedAvgKb) || 0;
+  if (stored < MIN_CAPACITY || stored > MAX_CAPACITY) return null;
+  if (storedKb < 20 || storedKb > 800) return null;
+  const bw = Number(bandwidthKbPerMin) || 6000;
+  const rateCap = Math.floor(60000 / Math.max(340, Number(minRequestIntervalMs) || 500));
+  const bwCap = Math.floor(bw / storedKb); // 用上次实测体积算出的带宽容量
+  // 「配置值 − 10，下限 20」；带宽/限速撑不住时钳到能承受的最大值（与冷启动等价）
+  const initial = Math.min(Math.max(stored - 10, MIN_CAPACITY), bwCap, rateCap, MAX_CAPACITY);
+  if (initial < MIN_CAPACITY) return null;
+  // avgKb 反推成 initial 对应的体积，让 configure 恰好得出 initial；EWMA 之后自行演进
+  return { avgKb: bw / initial, capacity: initial };
+}
 
 class FairShare {
   constructor() {
@@ -40,7 +73,7 @@ class FairShare {
   configure({ bandwidthKbPerMin, avgKbPerCheck, minChecksPerMin, minRequestIntervalMs } = {}) {
     const rateCap = Math.floor(60000 / Math.max(340, Number(minRequestIntervalMs) || 500));
     const bwCap = Math.floor((Number(bandwidthKbPerMin) || 6000) / Math.max(20, Number(avgKbPerCheck) || 300));
-    this.capacity = Math.max(Number(minChecksPerMin) || 6, Math.min(bwCap, rateCap));
+    this.capacity = Math.max(Number(minChecksPerMin) || 6, Math.min(bwCap, rateCap, MAX_CAPACITY));
     return this.capacity;
   }
 
@@ -107,4 +140,4 @@ function round2(v) {
   return Math.round(v * 100) / 100;
 }
 
-module.exports = { FairShare, TIER_WEIGHT, UTIL, MIN_MS, MAX_MS };
+module.exports = { FairShare, TIER_WEIGHT, UTIL, MIN_MS, MAX_MS, MAX_CAPACITY, MIN_CAPACITY, resumeCapacity };

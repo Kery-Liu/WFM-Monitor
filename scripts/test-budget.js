@@ -6,7 +6,7 @@
  *       优先级相对性 / 目标增删再分配 / snapshot
  */
 
-const { FairShare, TIER_WEIGHT, MIN_MS } = require('../src/core/engine/budget');
+const { FairShare, TIER_WEIGHT, MIN_MS, resumeCapacity, MAX_CAPACITY } = require('../src/core/engine/budget');
 
 let failures = 0;
 function check(name, cond, extra = '') {
@@ -145,6 +145,27 @@ const t = (id, priority, extra = {}) => ({ id, priority, matched: false, near: f
 }
 
 check('权重表 高:中:低 = 4:2:1', TIER_WEIGHT.high === 4 && TIER_WEIGHT.normal === 2 && TIER_WEIGHT.low === 1);
+check('容量硬顶 176（官方 3 req/s）', MAX_CAPACITY === 176);
+
+// ---------- 11. 持久化恢复的安全闸门 ----------
+{
+  const R = (cap, kb, bw = 6000, interval = 500) =>
+    resumeCapacity({ storedCapacity: cap, storedAvgKb: kb, bandwidthKbPerMin: bw, minRequestIntervalMs: interval });
+  let r = R(69, 87);
+  check('正常恢复 69 → 59（配置值−10）', r && r.capacity === 59, r && r.capacity);
+  r = R(20, 87);
+  check('配置值−10 不足 20 时由下限补齐', r && r.capacity === 20, r && r.capacity);
+  check('超过硬顶 176 → 回冷启动', R(200, 87) === null);
+  check('低于下限 20 → 回冷启动', R(15, 87) === null);
+  check('avgKb 出界（<20）→ 回冷启动', R(69, 5) === null);
+  r = R(69, 300);
+  check('带宽只够 20 → 钳到 20（与冷启动等价）', r && r.capacity === 20, r && r.capacity);
+  r = R(176, 30, 60000, 340);
+  check('限速上限钳制 176 → 166', r && r.capacity === 166, r && r.capacity);
+  check('缺字段 → 回冷启动', R(0, 0) === null);
+  r = R(69, 87);
+  check('恢复时 avgKb 反推正确（6000/59）', Math.abs(r.avgKb - 6000 / 59) < 0.1, Math.round(r.avgKb * 10) / 10);
+}
 
 console.log(failures === 0 ? '\n✅ 全部通过' : `\n❌ ${failures} 项失败`);
 process.exit(failures ? 1 : 0);

@@ -9,7 +9,7 @@
 
 const { EventEmitter } = require('events');
 const { Monitor } = require('./monitor');
-const { FairShare } = require('./budget');
+const { FairShare, resumeCapacity } = require('./budget');
 
 class Scheduler extends EventEmitter {
   constructor({ config, logger, store, marketSource, auctionSource, notifier, catalog }) {
@@ -30,6 +30,7 @@ class Scheduler extends EventEmitter {
     this.budget = new FairShare();
     this._avgKb = null;
     this._lastCalib = 0;
+    this._resumeDone = false; // 持久化恢复只做一次，之后由 EWMA 接管
     this.syncBudget();
   }
 
@@ -42,12 +43,42 @@ class Scheduler extends EventEmitter {
   syncBudget() {
     const s = this.config.get().schedule || {};
     const b = s.budget || {};
+    // 启动恢复：上次会话收敛的容量 −10 起步（下限 20），省掉冷启动校准。
+    // 只在第一次 syncBudget 时尝试；之后 _avgKb 由真实流量 EWMA 接管。
+    if (!this._resumeDone) {
+      this._resumeDone = true;
+      const resumed = resumeCapacity({
+        storedCapacity: b.storedCapacity,
+        storedAvgKb: b.storedAvgKb,
+        bandwidthKbPerMin: b.bandwidthKbPerMin,
+        minRequestIntervalMs: this.config.get().global.minRequestIntervalMs,
+      });
+      if (resumed) {
+        this._avgKb = resumed.avgKb;
+        this.logger.info('scheduler', `已从上次会话恢复容量 ${resumed.capacity} 次/分（存储值 ${b.storedCapacity} − 10 保守起步）`);
+      }
+    }
     return this.budget.configure({
       bandwidthKbPerMin: b.bandwidthKbPerMin,
       avgKbPerCheck: this._avgKb != null ? this._avgKb : b.avgKbPerCheck,
       minChecksPerMin: b.minChecksPerMin,
       minRequestIntervalMs: this.config.get().global.minRequestIntervalMs,
     });
+  }
+
+  /**
+   * 退出时把本次会话收敛的容量写进配置，下次启动跳过冷启动。
+   * 没有真实流量数据（_avgKb 未校准）或容量出界就不写，保持冷启动。
+   */
+  persistBudget() {
+    if (this._avgKb == null) return false;
+    const cap = this.budget.capacity;
+    if (cap < 20 || cap > 176) return false;
+    const c = this.config;
+    if (!c.get().schedule || !c.get().schedule.budget) return false;
+    c.setBudgetMemory(cap, Math.round(this._avgKb * 10) / 10);
+    this.logger.info('scheduler', `容量 ${cap} 次/分已写入配置（avgKb=${Math.round(this._avgKb)}），下次启动以此 −10 起步`);
+    return true;
   }
 
   /**
