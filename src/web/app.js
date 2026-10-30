@@ -865,7 +865,6 @@ function renderTargets() {
           ${t.enabled && v.state === 'error' ? `<span class="pill red">异常</span>` : ''}
           <span class="pill">${esc(t.kind === 'auction' ? '拍卖' : t.direction === 'sell' ? '收购' : '出售')}</span>
           <span class="pill ${v.failures ? 'red' : ''}">${v.schedule && v.schedule.mode === 'auto' ? `${tierLabel(v.schedule.tier)} · ${v.schedule.effectiveSec}s` : `${t.intervalSec}s`}</span>
-          ${v.schedule && v.schedule.limited ? `<span class="pill warn" title="${isEN() ? 'Budget cap reached — slowed down by priority. Targets still notify normally.' : '预算已到上限，按优先级自动放慢；不影响达标通知'}">${isEN() ? 'Capped' : '受限'} ×${v.schedule.budgetFactor}</span>` : ''}
           ${t.enabled ? `<span class="pill gray" data-countdown="${v.nextInMs || 0}">${dur(v.nextInMs || 0)}</span>` : '<span class="pill gray">不采集</span>'}
         </div>
         ${sparkline(v.history, 300, 28, color)}
@@ -995,22 +994,17 @@ function tierLabel(tier) {
   return map[tier] || map.normal;
 }
 
-/** 详情页「下次检查」的副标题：把降速原因写清楚，避免被误当成故障 */
+/** 详情页「下次检查」的副标题：v1.2.1 配额分配制，间隔是推导值，把来源写清楚 */
 function scheduleSub(v) {
   const sc = v.schedule;
   const en = isEN();
   if (!sc) return en ? `every ${v.target.intervalSec}s` : `间隔 ${v.target.intervalSec}s`;
-  if (sc.limited) {
-    return en
-      ? `slowed to ${sc.effectiveSec}s by budget cap (base ${sc.baseSec}s)`
-      : `因预算受限已放慢至 ${sc.effectiveSec}s（原 ${sc.baseSec}s）`;
-  }
-  if (sc.mode !== 'auto') return en ? `every ${v.target.intervalSec}s` : `间隔 ${v.target.intervalSec}s`;
+  if (sc.mode !== 'auto') return en ? `every ${v.target.intervalSec}s` : `间隔 ${v.target.intervalSec}s（手动）`;
   const extra = sc.reason === 'triggered'
     ? (en ? ' · hit, slowed' : ' · 已达标放慢')
     : sc.reason === 'near'
       ? (en ? ' · close, sped up' : ' · 接近目标提速')
-      : '';
+      : (en ? ' · fair-share' : ' · 按预算自适应');
   return en
     ? `${sc.effectiveSec}s (${tierLabel(sc.tier)}${extra})`
     : `间隔 ${sc.effectiveSec}s（${tierLabel(sc.tier)}档${extra}）`;
@@ -1455,12 +1449,16 @@ function renderSettings() {
               <span class="track"></span>
               <span class="switch-label">启用自动调度</span>
             </label>
-            <div class="hint">按优先级分档检查（高 20s / 中 60s / 低 180s），并用带宽预算封顶。关闭后每个目标回到自己填的固定间隔。</div>
+            <div class="hint">${isEN()
+  ? 'Targets share the per-minute budget by priority (High:Mid:Low = 4:2:1). Intervals adapt automatically — fewer targets check faster, more targets check slower. Turning it off restores the fixed interval on each monitor.'
+  : '所有目标按优先级比重（高:中:低 = 4:2:1）分享每分钟配额，间隔自动伸缩：目标少就查得勤，目标多就自动放慢。关闭后每个目标回到自己填的固定间隔。'}</div>
           </div>
           <div class="field">
-            <label>本分钟预算</label>
+            <label>${isEN() ? 'Budget usage' : '预算用量'}</label>
             <div class="note" id="s-budget-line">—</div>
-            <div class="hint">每分钟允许的检查次数，取「带宽可承受」与「官方限速可承受」的较小值</div>
+            <div class="hint">${isEN()
+  ? 'Planned checks per minute vs. capacity. Capacity is derived internally from bandwidth and the official rate limit.'
+  : '计划每分钟检查次数对比总容量；容量由带宽与官方限速自动推导，无需手动设置'}</div>
           </div>
         </div>
       </div>
@@ -1861,13 +1859,14 @@ function refreshBudgetLine() {
     const b = s && s.scheduler && s.scheduler.budget;
     if (!b) return;
     const pct = Math.round((b.utilization || 0) * 100);
-    const deg = b.degraded && b.degraded.length
-      ? (isEN() ? ` · ${b.degraded.length} slowed` : ` · 降速目标 ${b.degraded.length} 个`)
-      : '';
     el.textContent = isEN()
-      ? `${b.used} / ${b.capacity} checks (${pct}%)${deg}`
-      : `已用 ${b.used} / ${b.capacity} 次（${pct}%）${deg}`;
+      ? `${round1(b.plannedPerMin)} of ${b.capacity} checks/min (${pct}%)`
+      : `计划 ${round1(b.plannedPerMin)} / 容量 ${b.capacity} 次/分（${pct}%）`;
   }).catch(() => {});
+}
+
+function round1(v) {
+  return Math.round((Number(v) || 0) * 10) / 10;
 }
 
 function markSettingsDirty() {
@@ -2765,13 +2764,15 @@ function renderRuleForm() {
       </div>
       <div class="field">
         ${autoSchedule()
-    ? `<label>检查优先级</label>
-        <div class="seg" id="f-priority">
-          <button type="button" class="${f.priority === 'high' ? 'on' : ''}" data-v="high">高 20s</button>
-          <button type="button" class="${f.priority === 'normal' ? 'on' : ''}" data-v="normal">中 60s</button>
-          <button type="button" class="${f.priority === 'low' ? 'on' : ''}" data-v="low">低 180s</button>
+    ? `<label>${isEN() ? 'Priority' : '检查优先级'}</label>
+        <div class="seg compact nowrap" id="f-priority">
+          <button type="button" class="${f.priority === 'high' ? 'on' : ''}" data-v="high">${isEN() ? 'High' : '高'}</button>
+          <button type="button" class="${f.priority === 'normal' ? 'on' : ''}" data-v="normal">${isEN() ? 'Mid' : '中'}</button>
+          <button type="button" class="${f.priority === 'low' ? 'on' : ''}" data-v="low">${isEN() ? 'Low' : '低'}</button>
         </div>
-        <div class="hint">高优先级查得更勤；总量受带宽预算约束，超了会自动放慢低档</div>`
+        <div class="hint">${isEN()
+    ? 'Tier = share of the budget, not fixed seconds. The interval shrinks as the budget frees up and stretches as targets pile up.'
+    : '档位只代表分到的配额比重（高:中:低 = 4:2:1），不是固定秒数；间隔随目标数量与预算自动伸缩'}</div>`
     : `<label>检查间隔 (秒)</label>
         <input type="number" id="f-interval" min="10" max="3600" value="${f.intervalSec || 60}"/>
         <div class="hint">越小越快，但别低于 15s</div>`}

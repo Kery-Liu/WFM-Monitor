@@ -299,16 +299,17 @@ const SCRIPT = String.raw`(async () => {
   ck('关闭自动调度后回到间隔输入框', !!document.getElementById('f-interval') && !document.getElementById('f-priority'),
     'interval=' + !!document.getElementById('f-interval'));
 
-  // ---- 预算受限的可见性：卡片上有胶囊、详情页副标题说明原因 ----
+  // ---- v1.2.1 配额分配制的可见性：卡片显示「档位 · 秒数」，详情页写明自适应 ----
   S.settings.schedule = { auto: true };
   const t0 = S.targets[0];
-  t0.schedule = { mode: 'auto', tier: 'high', baseSec: 20, stateFactor: 1, budgetLevel: 1, budgetFactor: 2, effectiveSec: 40, limited: true, reason: 'budget' };
+  t0.schedule = { mode: 'auto', tier: 'normal', baseSec: 14, effectiveSec: 14, matched: false, near: false, reason: null };
   S.selectedId = t0.id;
   S.tab = 'detail';
   renderAll();
   await wait(120);
-  ck('卡片显示受限胶囊', !!document.querySelector('.card .pill.warn'));
-  ck('详情页说明降速原因', /预算受限/.test(document.querySelector('.stat small') ? document.body.textContent : ''),
+  ck('卡片间隔胶囊带档位（中 · 14s）', /中 · 14s/.test(document.querySelector('.card .pill') ? document.body.textContent : ''),
+    (document.querySelector('.card') || {}).textContent?.match(/中 · \d+s/)?.[0] || '');
+  ck('详情页副标题写明按预算自适应', /按预算自适应/.test(document.body.textContent),
     (document.querySelectorAll('.stat small')[3] || {}).textContent || '');
   delete t0.schedule;
   S.settings.schedule = { auto: true };

@@ -182,8 +182,19 @@ class Monitor extends EventEmitter {
 
       await this.evaluate(snap);
       this.state = snap.matched ? 'trigger' : 'ok';
-      if (this.target.enabled) this.scheduleIn(this._nextDelay());
-      else this.nextRunAt = 0;
+      if (this.target.enabled) {
+        if (this.deps.config.get().global.paused && !forced) {
+          // 暂停生效中：这一轮（pause 设置前就开始的在飞检查）跑完即停住。
+          // 不修这里，10s 级的短间隔会在 pause 落地瞬间撞上在飞检查，
+          // 把 state 覆盖回 ok，表现为「暂停了还在查」。
+          this.state = 'paused';
+          this.nextRunAt = 0;
+        } else {
+          this.scheduleIn(this._nextDelay());
+        }
+      } else {
+        this.nextRunAt = 0;
+      }
     } catch (err) {
       this.failures += 1;
       this.lastError = err.toJSON ? err.toJSON() : { message: err.message, kind: 'unknown' };

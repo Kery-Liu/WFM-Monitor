@@ -28,9 +28,9 @@ const tmp = (tag) => fs.mkdtempSync(path.join(os.tmpdir(), `wfm-${tag}-`));
   const c1 = new Config(tmp('cfg-default'));
   check('默认启用全局快捷键', c1.get().ui.hotkey.enabled === true);
   check('默认加速键为 Ctrl+Shift+F9', c1.get().ui.hotkey.accelerator === 'CommandOrControl+Shift+F9');
-  check('配置结构版本为 3', c1.get().version === 3);
+  check('配置结构版本为 4', c1.get().version === 4);
   check('自动调度默认开启', c1.get().schedule && c1.get().schedule.auto === true);
-  check('默认档位 20/60/180', JSON.stringify(c1.get().schedule.tiers) === JSON.stringify({ high: 20, normal: 60, low: 180 }));
+  check('默认配置已无 tiers 固定档位（v1.2.1 配额分配制）', !c1.get().schedule.tiers && !c1.get().schedule.degrade);
 
   // ---------- 2. 老配置迁移：v1 的 enabled=false 自动打开 ----------
   const dir2 = tmp('cfg-migrate');
@@ -41,7 +41,7 @@ const tmp = (tag) => fs.mkdtempSync(path.join(os.tmpdir(), `wfm-${tag}-`));
   const c2 = new Config(dir2);
   check('v1 配置迁移后快捷键启用', c2.get().ui.hotkey.enabled === true);
   const persisted = JSON.parse(fs.readFileSync(path.join(dir2, 'settings.json'), 'utf8'));
-  check('迁移结果已落盘', persisted.version === 3 && persisted.ui.hotkey.enabled === true);
+  check('迁移结果已落盘', persisted.version === 4 && persisted.ui.hotkey.enabled === true);
   check('迁移补齐 schedule 段', !!persisted.schedule && persisted.schedule.auto === true);
 
   // ---------- 3. Prime 战甲散件图标用 subIcon ----------

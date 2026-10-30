@@ -9,7 +9,7 @@
 
 const { EventEmitter } = require('events');
 const { Monitor } = require('./monitor');
-const { BudgetAllocator } = require('./budget');
+const { FairShare } = require('./budget');
 
 class Scheduler extends EventEmitter {
   constructor({ config, logger, store, marketSource, auctionSource, notifier, catalog }) {
@@ -27,7 +27,7 @@ class Scheduler extends EventEmitter {
     this._ticking = false;
     this.startedAt = 0;
     this.stats = { ticks: 0, checks: 0, triggers: 0, errors: 0 };
-    this.budget = new BudgetAllocator();
+    this.budget = new FairShare();
     this._avgKb = null;
     this._lastCalib = 0;
     this.syncBudget();
@@ -38,24 +38,40 @@ class Scheduler extends EventEmitter {
     return !!(s && s.auto);
   }
 
-  /** 把配置里的预算参数推给分配器（开关注释：改设置后要立刻调用） */
+  /** 把配置里的容量参数推给分配器（开关注释：改设置后要立刻调用） */
   syncBudget() {
     const s = this.config.get().schedule || {};
     const b = s.budget || {};
-    this.budget.configure({
-      enabled: b.enabled !== false && s.auto !== false,
+    return this.budget.configure({
       bandwidthKbPerMin: b.bandwidthKbPerMin,
       avgKbPerCheck: this._avgKb != null ? this._avgKb : b.avgKbPerCheck,
       minChecksPerMin: b.minChecksPerMin,
       minRequestIntervalMs: this.config.get().global.minRequestIntervalMs,
     });
-    return this.budget.capacity;
+  }
+
+  /**
+   * v1.3.0→1.2.1：配额分配制。把当前所有目标的档位/状态交给 FairShare 重算，
+   * 并把算出的间隔写回各 monitor。O(n) 纯计算，每跳调用都无压力。
+   * 间隔变化不重排 nextRunAt——在下一次 scheduleIn 时自然生效。
+   */
+  _redistribute() {
+    if (!this.autoMode) return;
+    const list = [];
+    for (const m of this.monitors.values()) {
+      if (!m.target.enabled) continue;
+      list.push({ id: m.id, priority: m.target.priority, matched: m.isMatched, near: m.isNearTarget });
+    }
+    this.budget.recompute(list);
+    for (const m of this.monitors.values()) {
+      m.setAssignedInterval(this.budget.intervalOf(m.id));
+    }
   }
 
   /**
    * 用真实流量校准「每次检查多少 KB」。
-   * gzip 生效后这个值会自己掉到 ~70，容量随之翻倍，不需要另写适配。
-   * 每 30 秒最多一次，避免每跳都算。
+   * gzip 生效后这个值会自己掉到 ~70，配额随之变大，所有目标的间隔自动缩短，
+   * 不需要另写适配。每 30 秒最多一次，避免每跳都算。
    */
   _calibBudget(now) {
     if (now - this._lastCalib < 30000) return;
@@ -110,8 +126,8 @@ class Scheduler extends EventEmitter {
     // 否则一个 intervalSec=3600 的老目标会被排到 180 秒后才首跑，回归会直接挂。
     const spread = Math.random() * Math.min(8000, m.intervalMs);
     m.scheduleIn(600 + spread);
-    this.budget.setTier(target.id, target.priority);
     this.monitors.set(target.id, m);
+    this._redistribute();
     return m;
   }
 
@@ -136,6 +152,7 @@ class Scheduler extends EventEmitter {
       (prev.weaponSlug || '') !== (target.weaponSlug || '') ||
       (!!prev.itemId && !!target.itemId && prev.itemId !== target.itemId);
     m.target = target;
+    this._redistribute(); // 档位可能变了，配额重新分配
 
     if (identityChanged) {
       m.resetForNewItem();
@@ -186,6 +203,7 @@ class Scheduler extends EventEmitter {
     m.removeAllListeners();
     this.monitors.delete(id);
     this.budget.remove(id);
+    this._redistribute(); // 份额让给剩下的目标
     this.emit('removed', { id });
     return true;
   }
@@ -233,19 +251,15 @@ class Scheduler extends EventEmitter {
       if (slots <= 0) return;
 
       this._calibBudget(now);
+      // 每跳重算配额：O(n) 纯计算，状态翻转（达标/接近）下一跳就反映到间隔
+      this._redistribute();
 
-      let grants;
-      if (this.autoMode) {
-        // 自动调度：优先级优先，同档里逾期越久越优先（保证不被饿死）
-        grants = this.budget.pick(due, { now, slots });
-      } else {
-        // 固定模式：沿用旧行为，间隔短的先跑，其次失败少的先跑
-        due.sort((a, b) => a.intervalMs - b.intervalMs || a.failures - b.failures);
-        grants = due.slice(0, slots);
-      }
+      // 到期目标按「逾期程度 ÷ 各自分到的间隔」排序，谁等得越久越优先，结构上不饿死
+      const rank = (m) => (now - (m.nextRunAt || now)) / Math.max(1000, m.effectiveIntervalMs);
+      due.sort((a, b) => rank(b) - rank(a) || a.failures - b.failures);
+      const grants = due.slice(0, slots);
 
       for (const m of grants) {
-        m.budgetLevel = this.budget.levelOf(m.id);
         this._inflight += 1;
         this.stats.checks += 1;
         m.tick()

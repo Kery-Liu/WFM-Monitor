@@ -527,6 +527,9 @@ select { cursor: pointer; }
 .seg.no-ink-anim .seg-ink { transition: none; }
 /* 面板标题里的紧凑分段控件：文案短（48 小时 / 90 天），不需要 78px 的按钮下限 */
 .seg.compact button { min-width: 0; flex: 0 0 auto; padding: 5px 9px; font-size: var(--fs-xs); }
+/* 窄容器（弹窗三列表单的第一列）里禁止换行：seg-ink 是跨全高的绝对定位块，
+   一旦按钮折行它的几何就全乱了 —— 这是 v1.2.0 截图里选中块悬空的根因 */
+.seg.nowrap { flex-wrap: nowrap; }
 
 /* 开关只在「轨道 + 文字」这块区域可点：inline-flex 收缩到内容宽度，
    否则 label 作为块级 flex 会撑满整行，点行尾空白也会误触 */

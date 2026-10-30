@@ -6,7 +6,7 @@ const path = require('path');
 const { readJsonSafe, writeJsonAtomic, clamp } = require('./util');
 
 const DEFAULTS = {
-  version: 3, // 配置结构版本：1 = v1.0.0，2 = v1.0.1（快捷键默认启用），3 = v1.2.0（自动调度）
+  version: 4, // 1=v1.0.0，2=快捷键，3=自动调度，4=配额分配制（tiers/degrade 废弃）
   global: {
     platform: 'pc', // pc | ps4 | xbox | switch | mobile
     crossplay: true,
@@ -21,20 +21,18 @@ const DEFAULTS = {
     userAgent: 'WFM-Monitor/1.0 (personal price watcher; contact: local)',
     historyPoints: 240,
   },
-  // 自动调度：按优先级分档决定检查频率，并用带宽预算封顶。
-  // auto=false 时完全退回旧行为（每个目标用自己填的 intervalSec），
-  // priority 和 intervalSec 在目标上同时存在，不需要数据迁移。
+  // 自动调度 v1.2.1：配额分配制。容量先算出来，再按优先级权重（高4/中2/低1，
+  // 见 engine/budget.js）分给每个目标，间隔是推导值而不是固定档位。
+  // auto=false 时完全退回旧行为（每个目标用自己填的 intervalSec）。
+  // bandwidth* 是内部参数：不给 UI 暴露，用户只拨优先级。
   schedule: {
     auto: true,
-    tiers: { high: 20, normal: 60, low: 180 }, // 秒
     budget: {
-      enabled: true,
       bandwidthKbPerMin: 6000, // 真正的天花板口径：每分钟允许多少 KB
       avgKbPerCheck: 300, // 初值，运行期由 client.stats 用 EWMA 校准
       calibrate: true,
       minChecksPerMin: 6, // 下限：目标少时别被预算误限
     },
-    degrade: { factorL1: 2, factorL2: 3, enterUtil: 0.85, exitUtil: 0.7, windowMs: 60000 },
   },
   network: {
     timeoutMs: 20000,
@@ -143,6 +141,14 @@ class Config {
       dirty = true;
     }
 
+    if ((Number(this.data.version) || 1) < 4) {
+      // v1.2.1 配额分配制：tiers（固定秒数）与 degrade（降级参数）废弃。
+      // 不删旧字段——留着无害，deepMerge 也不会把它们带回新默认里；
+      // 只推版本号，新代码不再读这两个字段。
+      this.data.version = 4;
+      dirty = true;
+    }
+
     if (dirty && persisted) {
       try {
         this.save();
@@ -165,11 +171,7 @@ class Config {
     no.requireConfirmRounds = clamp(Number(no.requireConfirmRounds) || 1, 1, 10);
     no.maxPerHour = clamp(Number(no.maxPerHour) || 30, 1, 500);
     const sc = this.data.schedule;
-    if (sc && sc.tiers) {
-      sc.tiers.high = clamp(Number(sc.tiers.high) || 20, 10, 3600);
-      sc.tiers.normal = clamp(Number(sc.tiers.normal) || 60, 10, 3600);
-      sc.tiers.low = clamp(Number(sc.tiers.low) || 180, 10, 3600);
-    }
+    // tiers 字段 v1.2.1 起废弃（间隔改为推导值），老配置里残留的不再钳制也不再读取
     if (sc && sc.budget) {
       sc.budget.bandwidthKbPerMin = clamp(Number(sc.budget.bandwidthKbPerMin) || 6000, 300, 60000);
       sc.budget.avgKbPerCheck = clamp(Number(sc.budget.avgKbPerCheck) || 300, 20, 800);
